@@ -28,12 +28,12 @@
       "includeLogsCount": 50
     }
   },
-  "include": [],
+  "include": ["java_angular/**"],
   "ignore": {
     "useGitignore": true,
     "useDotIgnore": true,
     "useDefaultPatterns": true,
-    "customPatterns": []
+    "customPatterns": ["**/ai_typescript_dev/**"]
   },
   "security": {
     "enableSecurityCheck": true
