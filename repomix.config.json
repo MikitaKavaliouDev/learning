@@ -33,7 +33,7 @@
     "useGitignore": true,
     "useDotIgnore": true,
     "useDefaultPatterns": true,
-    "customPatterns": ["**/ai_typescript_dev/**"]
+    "customPatterns": []
   },
   "security": {
     "enableSecurityCheck": true
