@@ -342,9 +342,13 @@ export class RecommendationService {
 
 ---
 
-## Repository Pattern for AI
+## Adapter Pattern for AI
 
-The Repository pattern isolates domain logic from data access details. In AI, we use it to abstract LLM provider SDKs behind a clean interface.
+The Adapter Pattern converts the interface of a third-party SDK into a domain-specific interface the application expects. In AI, each LLM provider (Bedrock, OpenAI, Anthropic) exposes a different SDK with different method signatures, request shapes, and response formats. The Adapter wraps each provider behind a uniform interface so the domain layer never depends on a specific SDK.
+
+### Why Adapters Matter for AI
+
+Without adapters, business logic would be littered with provider-specific imports, type checks, and error handling. Switching from Claude to GPT would require changes in the domain layer. With adapters, the domain only knows `ITextGenerator`; the infrastructure layer decides which adapter to wire in.
 
 ### The Complete Adapter Pattern in TypeScript
 
@@ -457,6 +461,99 @@ class ClaudeBedrockAdapter(TextGenerator):
             completion_tokens=response_body["usage"]["output_tokens"],
         )
 ```
+
+---
+
+## Repository Pattern for AI
+
+The Repository Pattern abstracts data access behind a collection-like interface. It isolates domain logic from *where and how* data is stored — whether in a database, a file system, a vector store, or an external API. In AI applications, repositories manage prompt history, conversation state, evaluation results, and model configuration.
+
+### The Complete Repository Pattern in TypeScript
+
+```typescript
+// repositories/prompt.repository.ts
+import { PromptRecord } from '../domain/prompt-record';
+
+export interface IPromptRepository {
+  save(prompt: PromptRecord): Promise<void>;
+  findBySession(sessionId: string): Promise<PromptRecord[]>;
+  findLatestByUser(userId: string, limit?: number): Promise<PromptRecord[]>;
+}
+```
+
+```typescript
+// repositories/prompt.repository.impl.ts
+import { IPromptRepository } from './prompt.repository';
+import { PromptRecord } from '../domain/prompt-record';
+import { db } from '../infrastructure/database';
+
+export class PromptRepository implements IPromptRepository {
+  async save(prompt: PromptRecord): Promise<void> {
+    await db.collection('prompts').insertOne({
+      userId: prompt.userId,
+      sessionId: prompt.sessionId,
+      text: prompt.text,
+      model: prompt.model,
+      tokensUsed: prompt.tokensUsed,
+      createdAt: new Date(),
+    });
+  }
+
+  async findBySession(sessionId: string): Promise<PromptRecord[]> {
+    const rows = await db
+      .collection('prompts')
+      .find({ sessionId })
+      .sort({ createdAt: 1 })
+      .toArray();
+
+    return rows.map(
+      (r) =>
+        new PromptRecord(r.userId, r.sessionId, r.text, r.model, r.tokensUsed)
+    );
+  }
+
+  async findLatestByUser(userId: string, limit = 10): Promise<PromptRecord[]> {
+    const rows = await db
+      .collection('prompts')
+      .find({ userId })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .toArray();
+
+    return rows.map(
+      (r) =>
+        new PromptRecord(r.userId, r.sessionId, r.text, r.model, r.tokensUsed)
+    );
+  }
+}
+```
+
+```typescript
+// domain/prompt-record.ts
+export class PromptRecord {
+  constructor(
+    public readonly userId: string,
+    public readonly sessionId: string,
+    public readonly text: string,
+    public readonly model: string,
+    public readonly tokensUsed: number
+  ) {}
+}
+```
+
+The domain service uses `IPromptRepository` without knowing whether the data lives in PostgreSQL, MongoDB, or a vector database. The concrete implementation is chosen at composition root.
+
+### Adapter vs Repository
+
+| Concern | Adapter | Repository |
+|---|---|---|
+| **Purpose** | Makes one interface compatible with another | Abstracts data access as a collection of domain objects |
+| **What it wraps** | A third-party SDK or external system | Storage/retrieval mechanics (DB, API, file, cache) |
+| **Interface shape** | Mirrors the *target* interface the domain expects | Mirrors a collection-like API (save, find, delete) |
+| **AI example** | `ClaudeBedrockAdapter` implements `ITextGenerator` | `PromptRepository` implements `IPromptRepository` |
+| **Domain awareness** | Translates between two interfaces | Hides persistence details entirely from the domain |
+
+An AI application typically uses **both**: adapters to wrap LLM providers, and repositories to manage prompt history, evaluations, and conversation state.
 
 ---
 
