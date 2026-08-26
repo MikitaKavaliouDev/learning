@@ -1,0 +1,2665 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+chapter-1.md
+chapter-2.md
+chapter-3.md
+chapter-4-8.md
+chapter-4.md
+chapter-5.md
+chapter-6.md
+curiculum.md
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="chapter-1.md">
+# CHAPTER 1: The Monolith vs. The Airport City
+### *Microservices Architecture, Bounded Contexts & Distributed Resilience*
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    THE MONOLITHIC AIRPORT TERMINAL                          │
+│                                                                             │
+│  [ Ticketing ] ─── [ Baggage ] ─── [ Fuel Depot ] ─── [ Banking Vault ]     │
+│         │                │                │                   │             │
+│         └────────────────┴───────┬────────┴───────────────────┘             │
+│                                  │                                          │
+│                   ❌ SINGLE FAILURE: Pipe burst in Fuel                      │
+│                      Depot floods the Banking Vault.                        │
+│                      ENTIRE AIRPORT EVACUATED & GROUNDED.                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+                                    VS.
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                  THE DISTRIBUTED AEROTROPOLIS (MICROSERVICES)               │
+│                                                                             │
+│  ┌──────────────────────┐    REST / JSON    ┌──────────────────────┐        │
+│  │   Passenger Terminal │ ◄───────────────► │  Cargo & Supply Hub  │        │
+│  │   (Spring Boot Pod)  │                   │  (Spring Boot Pod)   │        │
+│  └──────────┬───────────┘                   └──────────┬───────────┘        │
+│             │                                          │                    │
+│      [ Dedicated DB ]                           [ Dedicated DB ]            │
+│             │                                          │                    │
+│             ▼                                          ▼                    │
+│   ══════════════════════════ Kafka Event Bus ══════════════════════════     │
+│             ▲                                          ▲                    │
+│  ┌──────────┴───────────┐                   ┌──────────┴───────────┐        │
+│  │   Payment Vault Svc  │ ◄─ [CIRCUIT] ───► │  Flight Control Svc  │        │
+│  │   (Isolated Engine)  │    [BREAKER]      │  (Zero-Downtime Pod) │        │
+│  └──────────────────────┘                   └──────────────────────┘        │
+│                                                                             │
+│  ✔ ISOLATION: Cargo Hub failure never stops Payment Vault.                  │
+│  ✔ INDEPENDENT SCALING: Terminal scales up 10x during peak hours.           │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 1. THE MENTAL MODEL
+
+In the early days of aviation, an airport was a single wooden hangar. The ticket agent, the mechanic, the customs guard, the fuel barrels, and the cash safe all sat inside the same room under one roof. 
+
+If the fuel barrel leaked and caught fire, the ticket counter burned down, the cash safe melted, and every flight across the continent was grounded. If 5,000 holiday passengers stormed the lobby, the mechanic was crushed in the crowd and could not reach the runway to change an airplane tire.
+
+This is the **Monolith**. It is simple to build on day one, but as complexity grows, every component shares the same memory space, the same CPU, and the exact same database. A single `OutOfMemoryError` in a PDF export routine takes down the core payment processing engine.
+
+**The Modern Aerotropolis (Microservices Architecture)** breaks the single building into a sprawling, interconnected ecosystem of autonomous facilities:
+
+* **Bounded Contexts (Dedicated Buildings):** The Passenger Terminal (Ticketing), the Industrial Freight Hub (Supply Chain & Warehousing), and the Armored Vault (Banking Core) operate in physically separate buildings.
+* **Database-per-Service (Private Basements):** The Freight Hub does not possess keys to the Armored Vault’s basement. If the Freight Hub needs payment confirmation, it must send an official courier (an authenticated API call or event message) to the Vault's front desk.
+* **Blast Radius Containment (Fire Doors):** If a conveyor belt motor explodes in the Freight Hub, automated fire doors snap shut. The Cargo terminal operates at reduced capacity, but the Passenger Terminal and the Banking Core continue processing millions of euros per second completely unaffected.
+* **The Circuit Breaker (The Automated Border Checkpoint):** If the Customs Checkpoint is overwhelmed and stops answering calls, the Passenger Terminal does not allow 10,000 passengers to pile up in a narrow hallway until everyone suffocates. It diverts them immediately to a comfortable holding lounge with a clear explanatory broadcast (Fallback).
+
+---
+
+### 2. THE MECHANICS
+
+#### 2.1 Domain-Driven Design (DDD) & Bounded Contexts
+In a combined Banking and Industrial Supply Chain system, words lose universal meaning. 
+
+In a Monolith, developers create a colossal `Order.java` entity with 140 columns trying to satisfy everyone. In DDD, we enforce strict **Bounded Contexts**:
+
+```
+                       [ DOMAIN: THE ENTERPRISE ]
+                                   │
+         ┌─────────────────────────┴─────────────────────────┐
+         ▼                                                   ▼
+[ PAYMENT CONTEXT ]                                 [ LOGISTICS CONTEXT ]
+- Order = A financial debit liability               - Order = A physical package
+- Key Attributes: TransactionId, Amount, Currency   - Key Attributes: WeightKg, Dimensions,
+- Invariant: Balance cannot drop below zero           WarehouseSlotId
+                                                    - Invariant: Stock cannot be negative
+```
+
+Each microservice owns its data model, its business invariants, and its dedicated datastore. **Never allow Service A to read or write directly to Service B’s database.**
+
+---
+
+#### 2.2 Implementing Fault Tolerance with Resilience4j in Spring Boot 3+
+
+When microservices communicate over HTTP/REST, the network *will* fail, packets *will* drop, and remote servers *will* slow down. 
+
+A call that hangs for 30 seconds holds onto an active Tomcat worker thread. If 200 concurrent requests hang, the entire service runs out of threads and dies (**Cascading Failure**).
+
+We prevent this using the **Resilience4j Circuit Breaker** state machine:
+
+```
+           Normal Operation
+         ┌──────────────────┐
+         │      CLOSED      │ ◄─────────────────────────┐
+         └────────┬─────────┘                           │
+                  │ Failure Rate > Threshold            │ Success Rate > Threshold
+                  │ (e.g., 50% of calls fail)           │ (e.g., 80% calls succeed)
+                  ▼                                     │
+         ┌──────────────────┐                  ┌────────┴─────────┐
+         │       OPEN       │ ── Wait 10s ───► │    HALF-OPEN     │
+         └──────────────────┘  (Sleep Window)  └──────────────────┘
+           Fast Fail: Reject                     Probe: Test with a
+           all incoming calls                    few canary requests
+           immediately!
+```
+
+##### Production-Grade Resilience4j Configuration (`application.yml`)
+
+```yaml
+resilience4j:
+  circuitbreaker:
+    instances:
+      inventoryServiceBreaker:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 20             # Evaluate the last 20 requests
+        minimumNumberOfCalls: 10          # Need at least 10 calls before calculating rate
+        failureRateThreshold: 50          # Open circuit if 50% or more fail
+        slowCallRateThreshold: 75         # Open circuit if 75% take longer than slowCallDuration
+        slowCallDurationThreshold: 2000ms # Any call > 2 seconds is considered "slow"
+        waitDurationInOpenState: 10000ms  # Stay in OPEN state for 10s before probing (HALF-OPEN)
+        permittedNumberOfCallsInHalfOpenState: 5 # Let 5 canary requests through in HALF-OPEN
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+  timelimiter:
+    instances:
+      inventoryServiceBreaker:
+        timeoutDuration: 3000ms           # Hard cutoff at 3 seconds
+```
+
+##### Resilient Banking-Logistics Client Implementation (Java 17+ / Spring Boot 3+)
+
+```java
+package com.astek.banking.logistics.client;
+
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
+
+import java.util.concurrent.CompletableFuture;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class InventoryServiceClient {
+
+    private final RestClient restClient;
+    private static final String SERVICE_NAME = "inventoryServiceBreaker";
+
+    /**
+     * Calls remote warehouse service to reserve physical assets.
+     * Wrapped with CircuitBreaker and TimeLimiter to guarantee zero thread starvation.
+     */
+    @CircuitBreaker(name = SERVICE_NAME, fallbackMethod = "reserveStockFallback")
+    @TimeLimiter(name = SERVICE_NAME)
+    public CompletableFuture<StockReservationResponse> reserveStock(StockReservationRequest request) {
+        return CompletableFuture.supplyAsync(() -> {
+            log.info("Executing remote stock reservation for SKU: {}", request.sku());
+            return restClient.post()
+                    .uri("/api/v1/warehouse/reserve")
+                    .body(request)
+                    .retrieve()
+                    .body(StockReservationResponse.class);
+        });
+    }
+
+    /**
+     * FALLBACK MECHANISM:
+     * Invoked instantly when Circuit is OPEN, timed out, or HTTP 5xx occurs.
+     * Prevents the entire banking transaction from crashing ungracefully.
+     */
+    public CompletableFuture<StockReservationResponse> reserveStockFallback(
+            StockReservationRequest request, Throwable throwable) {
+        
+        log.error("Warehouse Service unavailable. Triggering degraded fallback for SKU: {}. Root cause: {}", 
+                request.sku(), throwable.getMessage());
+
+        // Return a degraded, queued status instead of failing hard
+        StockReservationResponse degradedResponse = new StockReservationResponse(
+                request.sku(),
+                ReservationStatus.PENDING_ASYNC_CONFIRMATION,
+                "Warehouse system degraded. Order queued in Outbox for eventual consistency."
+        );
+
+        return CompletableFuture.completedFuture(degradedResponse);
+    }
+}
+```
+
+---
+
+#### 2.3 The CAP Theorem & Eventual Consistency in Financial Logistics
+
+In a distributed environment, the network is fundamentally unreliable. The **CAP Theorem** dictates that a distributed data store can simultaneously provide at most two of the following three guarantees:
+
+```
+                          Consistency (C)
+                          (All nodes see same
+                           data simultaneously)
+                               / \
+                              /   \
+                             /  ★  \
+                            /       \
+                           /  BANK   \
+                          /   TRANS-  \
+                         /    ACTIONS  \
+                        /               \
+        Availability (A) ═══════════════ Partition Tolerance (P)
+     (Every request gets                (System functions despite
+      a non-error response)              dropped network packets)
+```
+
+1. **Banking Wire Transfers (CP System):** We choose **Consistency** over Availability. If the network between Paris and New York splits, we **refuse** the transfer rather than risk double-spending funds.
+2. **Supply Chain Tracking / Catalog (AP System):** We choose **Availability** over strict immediate Consistency. If the central warehouse database cannot be reached, the UI still serves cached tracking data with a status: *"Estimated location as of 5 mins ago."*
+
+---
+
+### 3. THE ENTERPRISE PITFALLS
+
+#### 💣 War Story: The Distributed Monolith Avalanche
+* **Context:** A major banking client split their monolith into 14 microservices. However, every service called the next service via synchronous HTTP REST (`OrderService` $\rightarrow$ `PaymentService` $\rightarrow$ `AccountService` $\rightarrow$ `NotificationService` $\rightarrow$ `AuditService`).
+* **The Disaster:** `AuditService` suffered a slow memory leak and started taking 8 seconds per request instead of 10 milliseconds. 
+* **The Result:** The latency cascaded upstream like dominoes. `NotificationService` ran out of HTTP connection pool threads, which exhausted `AccountService`, which exhausted `PaymentService`, which froze `OrderService`. The entire banking portal crashed. 
+* **The Root Cause:** They built a **Distributed Monolith**—all the network latency, deployment complexity, and debugging nightmares of microservices, with the tight coupling of a monolith.
+* **The Architectural Fix:** Decouple synchronous chains using **Asynchronous Event-Driven Messaging (Kafka/RabbitMQ)** and place strict timeouts and Circuit Breakers on all remaining synchronous boundaries.
+
+```
+❌ BAD (Synchronous Cascading Chain):
+[Client] ──> [Order Svc] ──> [Payment Svc] ──> [Audit Svc (HANGS 8s!)] ──> 💥 Crash All
+
+✔ GOOD (Decoupled with Event Bus):
+[Client] ──> [Order Svc] ──> [Payment Svc] ──> (Returns 202 Accepted immediately)
+                                 │
+                           [ Kafka Event ]
+                         /        │        \
+                        ▼         ▼         ▼
+                [Audit Svc] [Notif Svc] [Logistics Svc]
+```
+
+---
+
+#### 💣 War Story: The "Dual-Write" Financial Catastrophe
+* **Context:** An e-commerce supply chain platform executing an order checkout.
+* **The Anti-Pattern Code:**
+
+```java
+// ❌ THE SILENT KILLER: Dual-Write Anti-Pattern
+@Transactional
+public void processOrder(Order order) {
+    // Step 1: Write to local PostgreSQL DB
+    orderRepository.save(order); 
+    
+    // Step 2: Send message to Kafka broker
+    kafkaTemplate.send("order-events", new OrderCreatedEvent(order)); 
+}
+```
+
+* **What Blew Up:** If the database commit succeeds, but the network connection to Kafka hiccups before the event is sent, the bank account is debited, but the warehouse never ships the product. Conversely, if Kafka accepts the event, but the database transaction rolls back due to a constraint violation, the warehouse ships a package for free!
+* **The Architectural Fix: The Transactional Outbox Pattern.**
+
+```
+[ Local Database Transaction Boundary ]
+┌────────────────────────────────────────────────────────┐
+│  1. INSERT INTO orders (...)                           │
+│  2. INSERT INTO outbox_table (event_payload, status)   │
+└────────────────────────────────────────────────────────┘
+                           │ (Guaranteed ACID Atomic)
+                           ▼
+          [ Debezium / Polling Publisher Engine ]
+                           │ (Reads Outbox Table)
+                           ▼
+               [ Apache Kafka / RabbitMQ ]
+```
+
+---
+
+### 4. THE INTERVIEW CHEAT SHEET
+
+##### Q1: How do you decide whether an enterprise should use a Monolith or Microservices?
+> **Answer:** Microservices are an **organizational and operational scalability solution**, not a default design. 
+> * Choose a **Modular Monolith** when domain boundaries are still shifting, team size is small (<15 devs), and low operational complexity/speed-to-market is the priority. 
+> * Choose **Microservices** when multiple autonomous cross-functional teams need to deploy independently without release train bottlenecks, when distinct subdomains have radically different scaling profiles (e.g., high-throughput telemetry vs. low-throughput payment processing), and when blast-radius isolation is mandatory for compliance and uptime.
+
+##### Q2: What is a "Distributed Monolith", and how do you detect one in an existing codebase?
+> **Answer:** A Distributed Monolith occurs when an architecture is physically deployed as separate services, but remains **tightly coupled in design**. 
+> Key symptoms include:
+> 1. Cascading runtime outages (one service slowing down causes all upstream services to crash).
+> 2. Direct database sharing between microservices.
+> 3. Lock-step deployments (Service A version 2.4 cannot deploy without deploying Service B version 1.8 simultaneously).
+> 4. Excessive synchronous HTTP chains ($A \rightarrow B \rightarrow C \rightarrow D$) instead of asynchronous, event-driven integration.
+
+##### Q3: How does Resilience4j's Circuit Breaker determine when to open and close?
+> **Answer:** It uses an internal ring buffer (sliding window) based either on a **count of calls** (e.g., last 100 requests) or **time duration** (e.g., last 60 seconds). 
+> * If the **failure rate** or **slow-call rate** exceeds the configured threshold within that window, it transitions from `CLOSED` to `OPEN`, immediately fast-failing future calls without hitting the network.
+> * After a configured `waitDurationInOpenState`, it enters `HALF-OPEN`, permitting a small number of trial/canary requests through. 
+> * If the canary requests succeed above the recovery threshold, it resets to `CLOSED`; otherwise, it returns to `OPEN`.
+
+##### Q4: What is the Saga Pattern, and how does it replace 2-Phase Commit (2PC) in distributed transactions?
+> **Answer:** 2PC is a blocking protocol that doesn't scale in distributed cloud architectures because it holds database locks across network boundaries until all nodes agree. 
+> The **Saga Pattern** manages distributed transactions as a sequence of local transactions:
+> * Each service executes its local database transaction and publishes an event/message.
+> * The next service executes its transaction upon receiving the event.
+> * If any step fails, the Saga coordinates **Compensating Transactions** that run backward to undo the changes explicitly (e.g., refunding a debit or unreserving inventory).
+> * Sagas can be implemented via **Choreography** (event-driven, decentralized) or **Orchestration** (a central state machine directing the steps).
+
+##### Q5: How do you enforce data consistency between a database write and a message broker emission (The Dual-Write Problem)?
+> **Answer:** By implementing the **Transactional Outbox Pattern**. Instead of writing to the database and publishing to the message broker in two separate operations, the application saves the business entity and an event record into a dedicated `outbox` table within the **same local ACID database transaction**. 
+> An asynchronous background worker (using Change Data Capture / Debezium reading the database WAL log, or a high-performance polling engine) reads the outbox table and reliably publishes the messages to the broker with **at-least-once delivery guarantees**.
+</file>
+
+<file path="chapter-2.md">
+# CHAPTER 2: The Contract at the Counter
+### *REST API Architecture, OpenAPI/Swagger & Standardized Enterprise Governance*
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                         THE OPENAPI CONTRACT (TREATY)                            │
+│                                                                                  │
+│   POST /api/v1/vault/transfers                                                   │
+│   Header: Idempotency-Key: "uuid-9876-5432"                                      │
+│   Payload: { "sourceIban": "FR76...", "targetIban": "DE89...", "amount": 5000 } │
+└────────────────────────────────────────┬─────────────────────────────────────────┘
+                                         │
+                 ┌───────────────────────┴───────────────────────┐
+                 ▼                                               ▼
+   [ CUSTOMS COUNTER: ANGULAR ]                    [ UNDERGROUND VAULT: SPRING ]
+   Auto-Generated TypeScript Client                @RestController Contract Validation
+   - Type-safe models                              - @Valid / @NotNull enforcement
+   - Reactive HTTP Interceptors                    - RFC 7807 Problem Details on error
+   - Zero guesswork UI forms                       - Atomic Idempotency Filter
+                 │                                               │
+                 └───────────────────────┬───────────────────────┘
+                                         ▼
+                           [ HTTP STATUS STAMP CODES ]
+                  201 Created │ 400 Bad Request │ 409 Conflict
+```
+
+---
+
+### 1. THE MENTAL MODEL
+
+Imagine stepping up to the International Border & Customs Checkpoint at a global transit hub.
+
+Travelers from 180 countries arrive speaking different languages—some speak French (Angular), some speak German (React), some speak Japanese (Python data pipelines), and the customs border guards speak Latin (Java / Spring Boot).
+
+If there are no rules, chaos erupts:
+* One traveler writes their name on a napkin and shoves it through the window.
+* Another yells their bank balance out loud.
+* A third passenger asks: *"Is my visa approved?"* and the officer responds with a thumbs-up (HTTP 200), but whispers: *"Actually, you are under arrest"* (Error JSON inside a 200 OK).
+
+**The OpenAPI Specification (Swagger) is the International Customs Treaty.**
+
+* **The Resource URI (The Office Counter):** A noun, not a verb. You go to `/vault/accounts/FR761234`—you don't go to `/run_debit_and_transfer_funds_immediately`.
+* **The HTTP Verbs (The Official Customs Actions):**
+  * `GET` (*Inspect Documents*): Purely visual inspection. Looking at a passport never alters the traveler's citizenship (Safe & Idempotent).
+  * `POST` (*Register New Traveler*): Submits an application for a brand-new biometric visa. Submitting it 5 times creates 5 distinct visa records (Unsafe & Non-Idempotent).
+  * `PUT` (*Complete File Replacement*): Replaces the passenger’s entire registered file from scratch. Submitting the exact same replacement 10 times results in the identical final record (Idempotent).
+  * `PATCH` (*Single Field Modification*): Updates only the traveler's registered phone number without altering anything else.
+  * `DELETE` (*Revoke Entry Permit*): Cancels the entry permit. Doing it once revokes it; doing it five more times leaves it in the same revoked state (Idempotent).
+* **The Idempotency Key (The Border Transaction Token):** When paying a €50,000 cargo customs fee, the payment slip has a unique embossed tracking number. If a lightning strike knocks out the power line mid-swipe, submitting the exact same slip 10 seconds later **will never charge the company twice**.
+
+---
+
+### 2. THE MECHANICS
+
+#### 2.1 The Richardson Maturity Model: The Ladder to REST
+
+```
+  Level 3: HATEOAS (Hypermedia As The Engine Of Application State)
+  ▲        Self-navigating APIs: Responses include URI links to available next actions.
+  │
+  Level 2: HTTP Verbs & Standard Status Codes  ◄── [ENTERPRISE INDUSTRY SWEET SPOT]
+  ▲        Proper use of GET, POST, PUT, DELETE, 201 Created, 404 Not Found, 409 Conflict.
+  │
+  Level 1: Dedicated Resources (URIs)
+  ▲        URIs represent distinct nouns (/api/v1/accounts/123 instead of /api/service).
+  │
+  Level 0: The Swamp of Plain Old XML/JSON (RPC)
+           Single endpoint (e.g., /api/endpoint) using POST for every single operation.
+```
+
+---
+
+#### 2.2 Enterprise API Controller with Spring Boot 3+ and OpenAPI 3.0 Documentation
+
+In banking and supply chain systems, documentation is not an afterthought written in a wiki; **the code itself produces the validated contract.**
+
+```java
+package com.astek.banking.vault.controller;
+
+import com.astek.banking.vault.dto.TransferRequest;
+import com.astek.banking.vault.dto.TransferResponse;
+import com.astek.banking.vault.service.PaymentVaultService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.headers.Header;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.net.URI;
+
+@RestController
+@RequestMapping("/api/v1/vault/transfers")
+@RequiredArgsConstructor
+@Tag(name = "Vault Transfers API", description = "High-security financial ledger transfers & settlements")
+public class VaultTransferController {
+
+    private final PaymentVaultService paymentVaultService;
+
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(
+        summary = "Execute atomic wire transfer",
+        description = "Debits source account and credits target account with strict idempotency guarantees.",
+        responses = {
+            @ApiResponse(
+                responseCode = "201", 
+                description = "Transfer successfully executed and settled.",
+                headers = @Header(name = "Location", description = "URI to access the created transaction receipt")
+            ),
+            @ApiResponse(
+                responseCode = "400", 
+                description = "Invalid payload or validation failure",
+                content = @Content(schema = @Schema(implementation = ProblemDetail.class))
+            ),
+            @ApiResponse(
+                responseCode = "409", 
+                description = "Idempotency conflict: A transfer with this Idempotency-Key is currently processing or already executed.",
+                content = @Content(schema = @Schema(implementation = ProblemDetail.class))
+            ),
+            @ApiResponse(
+                responseCode = "422", 
+                description = "Unprocessable Entity: Insufficient funds in source account",
+                content = @Content(schema = @Schema(implementation = ProblemDetail.class))
+            )
+        }
+    )
+    public ResponseEntity<TransferResponse> executeTransfer(
+            @Parameter(description = "Unique client-generated UUID to prevent duplicate execution on network retry", required = true)
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            
+            @Valid @RequestBody TransferRequest request) {
+
+        TransferResponse response = paymentVaultService.processTransfer(idempotencyKey, request);
+        
+        URI location = URI.create("/api/v1/vault/transfers/" + response.transactionId());
+        return ResponseEntity.created(location).body(response);
+    }
+}
+```
+
+---
+
+#### 2.3 Global Exception Handling & RFC 7807 (Problem Details)
+
+Gone are the days of returning custom, arbitrary error JSON maps. **Spring Boot 3 natively adopts RFC 7807 Problem Details** for HTTP APIs.
+
+```java
+package com.astek.banking.vault.exception;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.net.URI;
+import java.time.Instant;
+import java.util.stream.Collectors;
+
+@RestControllerAdvice
+public class GlobalApiExceptionHandler {
+
+    @ExceptionHandler(InsufficientFundsException.class)
+    public ProblemDetail handleInsufficientFunds(InsufficientFundsException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.UNPROCESSABLE_ENTITY, 
+                ex.getMessage()
+        );
+        problem.setTitle("Insufficient Account Balance");
+        problem.setType(URI.create("https://bank.astek.com/errors/insufficient-funds"));
+        problem.setProperty("accountId", ex.getAccountId());
+        problem.setProperty("currentBalance", ex.getCurrentBalance());
+        problem.setProperty("attemptedAmount", ex.getAttemptedAmount());
+        problem.setProperty("timestamp", Instant.now());
+        return problem;
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ProblemDetail handleValidationErrors(MethodArgumentNotValidException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setTitle("Validation Constraint Violation");
+        problem.setType(URI.create("https://bank.astek.com/errors/validation-failure"));
+
+        String fieldErrors = ex.getBindingResult().getFieldErrors().stream()
+                .map(err -> String.format("Field '%s': %s", err.getField(), err.getDefaultMessage()))
+                .collect(Collectors.joining("; "));
+
+        problem.setDetail(fieldErrors);
+        problem.setProperty("timestamp", Instant.now());
+        return problem;
+    }
+}
+```
+
+##### Output RFC 7807 Standard Error JSON Payload:
+```json
+{
+  "type": "https://bank.astek.com/errors/insufficient-funds",
+  "title": "Insufficient Account Balance",
+  "status": 422,
+  "detail": "Account FR7630006000011234567890189 has €120.00, which is insufficient for a transfer of €5,000.00",
+  "accountId": "FR7630006000011234567890189",
+  "currentBalance": 120.00,
+  "attemptedAmount": 5000.00,
+  "timestamp": "2026-08-24T07:45:00.123Z"
+}
+```
+
+---
+
+#### 2.4 Angular Frontend Integration: Strongly-Typed HTTP Interceptors
+
+In Angular 14+, frontend clients consume these standardized contracts using **HttpInterceptors** to inject Idempotency keys, attach bearer tokens, and centrally parse RFC 7807 errors.
+
+```typescript
+import { Injectable } from '@angular/core';
+import {
+  HttpRequest,
+  HttpHandler,
+  HttpEvent,
+  HttpInterceptor,
+  HttpErrorResponse
+} from '@angular/common/http';
+import { Observable, throwError } from 'rxjs';
+import { catchError } from 'rxjs/operators';
+import { v4 as uuidv4 } from 'uuid';
+
+export interface ProblemDetail {
+  type: string;
+  title: string;
+  status: number;
+  detail: string;
+  [key: string]: any;
+}
+
+@Injectable()
+export class ApiContractInterceptor implements HttpInterceptor {
+
+  intercept(request: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
+    let headers = request.headers;
+
+    // Automatically append Idempotency-Key on mutating write operations (POST, PUT)
+    if (request.method === 'POST' || request.method === 'PUT') {
+      if (!headers.has('Idempotency-Key')) {
+        headers = headers.set('Idempotency-Key', uuidv4());
+      }
+    }
+
+    const modifiedReq = request.clone({ headers });
+
+    return next.handle(modifiedReq).pipe(
+      catchError((error: HttpErrorResponse) => {
+        if (error.error && error.error.type && error.error.status) {
+          const problem: ProblemDetail = error.error;
+          console.error(`[API Error ${problem.status}] ${problem.title}: ${problem.detail}`);
+          return throwError(() => problem);
+        }
+        return throwError(() => error);
+      })
+    );
+  }
+}
+```
+
+---
+
+### 3. THE ENTERPRISE PITFALLS
+
+#### 💣 War Story: The "HTTP 200 with Hidden Error" Deception
+* **Context:** A high-value logistics inventory synchronization service between warehouses and central accounting.
+* **The Anti-Pattern Code:**
+  ```java
+  // ❌ DISASTER: Returning 200 OK for business/system crashes
+  @PostMapping("/sync")
+  public ResponseEntity<Map<String, Object>> syncStock() {
+      try {
+          inventoryService.recalculate();
+          return ResponseEntity.ok(Map.of("status", "SUCCESS"));
+      } catch (Exception e) {
+          // Returning 200 OK with error payload!
+          return ResponseEntity.ok(Map.of("status", "FAILED", "error", e.getMessage()));
+      }
+  }
+  ```
+* **Why It Destroyed the System:**
+  1. **Resilience4j Circuit Breakers:** The Circuit Breaker monitors HTTP status codes. Since every request returned `200 OK`, the Circuit Breaker remained `CLOSED` during an 8-hour database outage, continuing to bombard the dying DB.
+  2. **API Gateways & Cloud Monitors:** Azure Application Insights reported 100% health (0 errors) while millions of euros in stock orders silently vanished.
+  3. **Frontend Caching:** Angular HTTP caching interceptors cached the "FAILED" response as a valid cached resource for all future users.
+* **Rule:** **Never violate HTTP semantics. If an operation fails, return a 4xx or 5xx status code.**
+
+---
+
+#### 💣 War Story: The Accidental Triple-Debit Payment (Missing Idempotency)
+* **Context:** Mobile corporate banking application executing international wire transfers.
+* **The Incident:** A corporate treasurer clicked *"Authorize €1,000,000 Transfer"*. The bank’s backend server debited the account, but during the return flight of the HTTP response, a cellular tower disconnected. The mobile app received a `TimeoutException`.
+* **The Human Behavior:** Believing the transfer had failed, the treasurer clicked the button two more times.
+* **The Result:** Three independent `POST` requests were processed. **€3,000,000 was debited instead of €1,000,000.**
+* **The Architectural Fix:** Implement an **Idempotency Filter** using Redis distributed locking:
+
+```
+[ POST /transfers (Idempotency-Key: X) ]
+                   │
+                   ▼
+       [ Redis Check: Key X exists? ]
+        ├── YES (State: IN_PROGRESS) ──► Return 409 Conflict ("Transaction already processing")
+        ├── YES (State: COMPLETED)   ──► Return Cached Original 201 Response (Zero DB side-effects)
+        └── NO                       ──► Set Redis Key X (IN_PROGRESS) ──► Execute DB Transfer
+                                                                       ──► Set Key X (COMPLETED)
+```
+
+---
+
+### 4. THE INTERVIEW CHEAT SHEET
+
+##### Q1: What makes an HTTP method "Safe" versus "Idempotent"? Classify GET, POST, PUT, PATCH, and DELETE.
+> **Answer:** 
+> * **Safe:** The method produces no side effects on the server state (read-only). 
+> * **Idempotent:** Executing the request $N$ times with the same parameters produces the exact same server state as executing it once ($f(f(x)) = f(x)$).
+> * **Classification:**
+>   * `GET`: Safe & Idempotent.
+>   * `PUT`: Unsafe (modifies state), but **Idempotent** (replacing a resource with identical payload leaves identical state).
+>   * `DELETE`: Unsafe, but **Idempotent** (deleting resource #42 leaves it deleted whether called 1 time or 10 times; returns 204 or 404, but state remains identical).
+>   * `POST`: Unsafe & **Non-Idempotent** (calling $N$ times creates $N$ records).
+>   * `PATCH`: Unsafe & generally **Non-Idempotent** (e.g., `PATCH { "increment": 5 }`), though it can be implemented idempotently depending on payload design.
+
+##### Q2: How does Spring Boot 3 handle standardized REST API errors using RFC 7807 (`ProblemDetail`)?
+> **Answer:** Spring Boot 3 / Spring Framework 6 introduces the native `ProblemDetail` specification class conforming to **RFC 7807**. Instead of constructing custom error DTOs, developers return `ProblemDetail` from `@RestControllerAdvice` methods. It standardizes key diagnostic fields (`type`, `title`, `status`, `detail`, `instance`) and allows arbitrary key-value custom properties via `.setProperty("key", value)`. It can be globally activated for all standard Spring exceptions via `spring.mvc.problemdetails.enabled=true`.
+
+##### Q3: How do you handle API Versioning in an enterprise banking environment? Compare URI vs Header versioning.
+> **Answer:** 
+> * **URI Versioning (`/api/v1/accounts`):** Highly visible, easy to route at the API Gateway level (Azure API Management / NGINX), simple for documentation in Swagger, and easy to cache in CDNs. Recommended for external public contracts.
+> * **Header / Content Negotiation Versioning (`Accept: application/vnd.bank.v1+json` or `X-API-Version: 1`):** Keeps URIs clean and truly RESTful (identifying the resource rather than the version), but is harder to route, cannot be tested directly in a browser address bar, and complicates caching proxy configurations.
+> In high-stakes banking/logistics, **URI Versioning for major breaking versions** combined with additive non-breaking backward compatibility is the industry standard.
+
+##### Q4: What is the Richardson Maturity Model, and why do most production architectures stop at Level 2?
+> **Answer:** The model ranks REST compliance from Level 0 (single RPC endpoint over HTTP) to Level 3 (HATEOAS with hypermedia navigational links). Most enterprise systems stop at **Level 2 (HTTP Verbs + Status Codes)** because Level 3 (HATEOAS) adds heavy payload serialization overhead, introduces complex coupling to hypermedia link parsers on frontend clients (like Angular), and yields limited ROI compared to strongly typed OpenAPI client generation schemas.
+
+##### Q5: How do you design and enforce Idempotency in non-idempotent endpoints like `POST /payments`?
+> **Answer:** By requiring a unique client-generated header: `Idempotency-Key` (UUIDv4). 
+> 1. An API Gateway or Spring Filter intercepts the incoming request and attempts an atomic `SETNX` in Redis on the key with a TTL (e.g., 24 hours).
+> 2. If the key exists with status `PROCESSING`, return `409 Conflict` or `425 Too Early`.
+> 3. If the key exists with status `COMPLETED`, return the cached response body and status code immediately without touching the database.
+> 4. If the key is new, proceed with the transactional business logic, save the execution result into Redis, and return the `201 Created` response.
+</file>
+
+<file path="chapter-3.md">
+# CHAPTER 3: The Engine Block
+### *Modern Java Mechanics: Java 17/21, Concurrency, Virtual Threads & The Memory Model*
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                 PLATFORM THREADS (HEAVY DIESEL TRUCKS)                      │
+│                                                                             │
+│  [ OS Kernel Thread 1 ] ◄── (1:1 Binding, ~1MB RAM) ──► [ Java Thread 1 ]   │
+│  [ OS Kernel Thread 2 ] ◄── (1:1 Binding, ~1MB RAM) ──► [ Java Thread 2 ]   │
+│                                                                             │
+│  ❌ Max ~2,000 - 5,000 threads before OS context-switch paralysis.          │
+│  ❌ Thread blocks on Database/IO ──► Entire 1MB OS thread sits idle!        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+                                    VS.
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│               PROJECT LOOM: VIRTUAL THREADS (ELECTRIC DRONES)               │
+│                                                                             │
+│  [ Virtual Thread 1 ] [ Virtual Thread 2 ] ... [ Virtual Thread 1,000,000 ] │
+│         │                    │                          │                   │
+│         └────────────────────┼──────────────────────────┘                   │
+│                              ▼                                              │
+│            [ ForkJoinPool Carrier Thread (OS Level) ]                       │
+│                                                                             │
+│  ✔ Millions of concurrent tasks with KB-sized heap stacks.                  │
+│  ✔ Virtual thread blocks on IO ──► JVM unmounts it from Carrier thread!    │
+│  ✔ Carrier thread instantly executes another Virtual Thread.                │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 1. THE MENTAL MODEL
+
+Underneath the glass terminals, polished counters, and flight boards lies the airport’s industrial machine room: the high-torque turbines, hydraulic pumps, and automated transport tunnels.
+
+If the engine block is poorly engineered, the whole airport crawls to a halt.
+
+* **Platform Threads vs. Virtual Threads (Heavy Trucks vs. Swarm Drones):**
+  * **Platform Thread (Java 8–17 OS Thread):** A 2-ton diesel semi-truck. It requires a licensed driver (OS kernel binding) and claims a fixed 1MB parking space (Stack Memory) whether carrying a single envelope or 10 tons of cargo. If 3,000 trucks enter the service road, gridlock hits (OS context switching overhead). When a truck backs into a loading dock to wait for a 200ms database response, the driver turns off the engine and sleeps inside the cabin—**blocking the entire highway lane.**
+  * **Virtual Thread (Java 21 Project Loom):** A swarm of 1,000,000 lightweight electric drones. Their footprint is microscopic (bytes in the JVM Heap). When a drone reaches a loading dock and waits for a response, it instantly dismounts from the highway. The underlying carrier truck (the OS Carrier Thread) immediately carries another drone down the road without pausing for a single microsecond.
+* **The JVM Memory Model (Stack, Heap, Metaspace):**
+  * **The Stack (The Controller's Private Clipboard):** Private, isolated to a single thread. It holds local primitive variables and method call frames. The moment a method returns, its clipboard page is torn off and incinerated. Zero garbage collection needed.
+  * **The Heap (The Central Shared Cargo Warehouse):** The open floor where all Java `Objects` live. Any thread with a reference tracking slip can inspect and modify these objects.
+  * **The Garbage Collector (The Automated Janitorial Fleet):** The sweepers that identify abandoned crates in the warehouse. **G1GC** breaks the warehouse into regional zones to clean dirty areas incrementally. **ZGC** uses color-coded laser scanners to sweep discarded boxes in sub-millisecond pauses while cargo loaders are actively running around them.
+* **Records & Sealed Classes (Tamper-Proof Flight Manifests):**
+  * **Records:** Stamped, immutable manifests. Once printed, no rogue agent can secretly erase a passenger name or alter an account balance.
+  * **Sealed Types:** A closed flight classification treaty. An airborne vehicle can *only* be an `Airliner`, a `CargoFreighter`, or a `Helicopter`. No unknown, uncertified flying objects are legally allowed to enter airspace.
+
+---
+
+### 2. THE MECHANICS
+
+#### 2.1 Java 17/21 Type System: Records, Sealed Classes & Pattern Matching
+In modern enterprise banking and logistics, we replace bloated JavaBeans (full of mutable getters, setters, and boilerplate) with **immutable Domain-Driven Data Carriers** and **exhaustive algebraic data types**.
+
+```java
+package com.astek.banking.domain;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.Objects;
+
+// 1. SEALED INTERFACE: Exhaustively bounds domain types at the compiler level
+public sealed interface FinancialInstrument 
+    permits FiatCurrency, CryptoAsset, CommodityContract {}
+
+// 2. RECORD: Pure, immutable data carrier with compact validation constructor
+public record FiatCurrency(
+    String currencyCode, 
+    BigDecimal balance, 
+    Instant lastAudited
+) implements FinancialInstrument {
+
+    // Compact Constructor: Validation rules run before assignment
+    public FiatCurrency {
+        Objects.requireNonNull(currencyCode, "Currency code cannot be null");
+        Objects.requireNonNull(balance, "Balance cannot be null");
+        if (balance.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Account balance cannot be negative!");
+        }
+        if (currencyCode.length() != 3) {
+            throw new IllegalArgumentException("ISO Currency code must be exactly 3 letters");
+        }
+    }
+}
+
+public record CryptoAsset(String walletAddress, BigDecimal coinAmount) implements FinancialInstrument {}
+public record CommodityContract(String warehouseLotId, double metricTons) implements FinancialInstrument {}
+```
+
+##### Exhaustive Pattern Matching with `switch` (No `default` branch required!):
+```java
+package com.astek.banking.service;
+
+import com.astek.banking.domain.*;
+import org.springframework.stereotype.Service;
+
+@Service
+public class SettlementAuditService {
+
+    /**
+     * Java 21 Pattern Matching: Compiler guarantees all subtypes of FinancialInstrument are handled.
+     * If a developer adds a new permit type later, this code fails to compile immediately.
+     */
+    public String calculateAuditRisk(FinancialInstrument instrument) {
+        return switch (instrument) {
+            case FiatCurrency fiat when fiat.balance().compareTo(new java.math.BigDecimal("1000000")) > 0 ->
+                "HIGH_VALUE_FIAT: Immediate central bank regulatory reporting required.";
+            
+            case FiatCurrency fiat -> 
+                "STANDARD_FIAT: Cleared for standard SEPA / SWIFT transfer.";
+                
+            case CryptoAsset crypto -> 
+                "CRYPTO_VOLATILITY: Enhanced AML / On-chain forensic inspection triggered.";
+                
+            case CommodityContract commodity -> 
+                "PHYSICAL_LOGISTICS: Verify physical warehouse vault slot: " + commodity.warehouseLotId();
+        };
+    }
+}
+```
+
+---
+
+#### 2.2 Concurrency Evolution: Project Loom & Virtual Threads (Java 21)
+
+Prior to Java 21, building high-throughput I/O services required reactive programming frameworks (WebFlux/Reactor), which introduced complex mental overhead, difficult stack traces, and non-linear debugging. 
+
+**Virtual Threads restore simple, synchronous, blocking code while achieving massive reactive-level scalability.**
+
+```java
+package com.astek.logistics.concurrency;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.List;
+import java.util.concurrent.Executors;
+
+@Slf4j
+@Service
+public class HighThroughputWarehouseScanner {
+
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(2))
+            .build();
+
+    /**
+     * Launches 50,000 concurrent warehouse sensor queries.
+     * On Java 17 Platform Threads: System crashes with OutOfMemoryError: unable to create native thread.
+     * On Java 21 Virtual Threads: Completes seamlessly in seconds using negligible memory.
+     */
+    public void scanAllDistributionNodes(List<String> nodeUrls) {
+        // Creates a lightweight executor spawning one Virtual Thread per task
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            
+            for (String url : nodeUrls) {
+                executor.submit(() -> {
+                    log.info("Inspecting Node: {} on Thread: {}", url, Thread.currentThread());
+                    
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(URI.create(url))
+                            .GET()
+                            .build();
+
+                    // BLOCKING IO CALL:
+                    // When send() blocks, the JVM automatically UNMOUNTS this virtual thread
+                    // from the OS carrier thread, freeing the carrier thread for other work!
+                    HttpResponse<String> response = httpClient.send(
+                            request, 
+                            HttpResponse.BodyHandlers.ofString()
+                    );
+                    
+                    log.info("Received node status: {} from {}", response.statusCode(), url);
+                    return response.body();
+                });
+            }
+            
+        } // try-with-resources triggers executor.close(), which waits for all virtual threads to complete!
+    }
+}
+```
+
+---
+
+#### 2.3 The Java Memory Model (JMM) & Thread Visibility
+
+Every modern CPU features multi-level hardware caches (L1, L2, L3). Without explicit memory barriers, **Thread A's writes to a shared variable remain trapped in its local L1/L2 cache**, invisible to Thread B on another CPU core.
+
+```
+ [ CPU Core 1 ] ──► [ L1/L2 Cache: balance = 500 ] ──┐
+                                                     │  ❌ VISIBILITY GAP:
+                                                     ├──► [ Main RAM: balance = 0 ]
+                                                     │
+ [ CPU Core 2 ] ──► [ L1/L2 Cache: balance = 0   ] ──┘
+```
+
+##### The `volatile` Keyword & The "Happens-Before" Guarantee
+Marking a field `volatile` forces all reads and writes to go directly to **Main Memory (RAM)** and establishes a strict **Happens-Before relationship**, preventing the compiler and CPU from reordering instructions across the barrier.
+
+```java
+public class TerminalEmergencyShutdown {
+    // volatile guarantees that when one thread sets this to true,
+    // all other CPU cores see the update IMMEDIATELY without cache stale reads.
+    private volatile boolean shutdownRequested = false;
+
+    public void triggerEmergencyStop() {
+        this.shutdownRequested = true; // Flushes directly to main memory with write barrier
+    }
+
+    public void runRunwayMonitoring() {
+        while (!shutdownRequested) {
+            // Safe: CPU is prevented from hoisting shutdownRequested into an infinite loop cache
+            monitorSensors();
+        }
+        evacuateRunway();
+    }
+
+    private void monitorSensors() { /* check radar */ }
+    private void evacuateRunway() { /* stop planes */ }
+}
+```
+
+> **Crucial Distinction:** `volatile` guarantees **visibility**, but it does **NOT guarantee atomicity**! An operation like `count++` is actually 3 distinct bytecode instructions: (1) Read, (2) Increment, (3) Write. To ensure atomicity across threads, use `AtomicInteger`, `AtomicReference`, or `synchronized` / `ReentrantLock`.
+
+---
+
+### 3. THE ENTERPRISE PITFALLS
+
+#### 💣 War Story: The Virtual Thread "Carrier Pinning" Disaster
+* **Context:** A high-frequency payment verification hub upgraded to Java 21 to handle 20,000 requests/sec with Virtual Threads.
+* **The Sudden Outage:** During a traffic surge, latency skyrocketed from 5ms to 45 seconds, and the JVM froze completely.
+* **The Root Cause: Thread Pinning.** Inside an old legacy hashing utility, a developer had wrapped a blocking network socket call inside a `synchronized` block:
+
+```java
+// ❌ THE SILENT KILLER: Synchronized block over blocking I/O pins the carrier thread!
+public class LegacyCryptoClient {
+    private final Object lock = new Object();
+
+    public byte[] signTransaction(byte[] payload) {
+        synchronized (lock) { // PINS the virtual thread to the OS Carrier Thread!
+            // If this socket call blocks for 500ms, the underlying OS Carrier Thread is frozen.
+            return executeBlockingNetworkCall(payload); 
+        }
+    }
+}
+```
+* **Why it destroyed the system:** When a Virtual Thread encounters a blocking I/O operation inside a `synchronized` block or native JNI call, **the JVM cannot unmount it.** The virtual thread is *"pinned"* to its OS Carrier Thread. Since the default carrier pool size equals the machine's CPU core count (e.g., 16 cores), **16 pinned threads completely exhausted the entire JVM's carrier pool**, freezing the remaining 19,984 virtual threads!
+* **The Fix:** Replace `synchronized` blocks that guard I/O operations with `java.util.concurrent.locks.ReentrantLock`:
+
+```java
+// ✅ THE FIX: ReentrantLock unmounts cleanly without pinning carrier threads
+public class ModernCryptoClient {
+    private final ReentrantLock lock = new ReentrantLock();
+
+    public byte[] signTransaction(byte[] payload) {
+        lock.lock();
+        try {
+            return executeBlockingNetworkCall(payload); // Virtual thread unmounts safely!
+        } finally {
+            lock.unlock();
+        }
+    }
+}
+```
+
+---
+
+#### 💣 War Story: The Stop-the-World Garbage Collection Freeze in Interbank Settlements
+* **Context:** An automated trading and liquidity rebalancing service running on a 64GB Heap with standard parallel GC.
+* **The Incident:** At 9:00 AM market opening, high allocation rates of short-lived DTOs triggered a Full GC "Stop-the-World" pause lasting **4.8 seconds**.
+* **The Consequence:** The bank’s settlement engine missed critical clearing windows, failing strict regulatory SLAs and incurring €150,000 in late-settlement penalties.
+* **The Architectural Fix:** Migrate the JVM flag from standard GC to **Generational ZGC (Z Garbage Collector)** introduced in modern Java:
+  ```bash
+  -XX:+UseZGC -XX:+ZGenerational
+  ```
+  ZGC performs concurrent marking, relocation, and compaction with **guaranteed sub-millisecond pause times (<1ms)** regardless of whether the heap is 16GB or 16TB.
+
+---
+
+### 4. THE INTERVIEW CHEAT SHEET
+
+##### Q1: How do Virtual Threads fundamentally differ from Platform Threads, and how does the JVM schedule them?
+> **Answer:** 
+> * **Platform Threads** are thin 1:1 wrappers around Operating System kernel threads. They allocate a fixed, large stack (~1MB by default), involve expensive OS-level context switching, and block their OS thread during I/O operations.
+> * **Virtual Threads (Project Loom)** are user-space JVM-managed entities with dynamic stack sizing starting in kilobytes on the heap. 
+> * The JVM schedules virtual threads using a dedicated `ForkJoinPool` of carrier platform threads. When a virtual thread executes a blocking operation (e.g., socket read, JDBC call), the JVM captures its continuation, unmounts it from the carrier thread, and allows the carrier thread to process other tasks. When the I/O event completes, the scheduler remounts the virtual thread onto an available carrier thread.
+
+##### Q2: What causes Virtual Thread "Pinning", how do you detect it, and how do you resolve it?
+> **Answer:** Pinning occurs when a virtual thread enters a blocking state but cannot be unmounted from its underlying OS carrier thread, monopolizing an OS thread. This happens when blocking operations occur inside a `synchronized` block/method or inside native C/JNI calls.
+> * **Detection:** Add the JVM diagnostic flag `-Djdk.tracePinnedThreads=full` or inspect Java Flight Recorder (JFR) `jdk.VirtualThreadPinned` events.
+> * **Resolution:** Refactor `synchronized` blocks guarding I/O operations to use `java.util.concurrent.locks.ReentrantLock`.
+
+##### Q3: Explain the Java Memory Model (JMM) "Happens-Before" relationship and the role of the `volatile` keyword.
+> **Answer:** The JMM defines the rules under which memory writes by one thread become visible to reads by another. The **Happens-Before** guarantee ensures that memory operations before a specific action are completely flushed and visible to operations after it.
+> * Declaring a variable `volatile` guarantees that:
+>   1. Writes to that variable are immediately flushed to main memory.
+>   2. Reads always bypass CPU L1/L2 caches to fetch the freshest value from RAM.
+>   3. The JVM and CPU memory barriers prevent instruction reordering around the volatile access.
+
+##### Q4: What architectural value do Sealed Classes and Records bring to an enterprise codebase?
+> **Answer:** 
+> * **Records** provide pure, immutable data carriers that eliminate boilerplate while guaranteeing thread-safety, equality semantics, and preventing accidental state mutation across layers.
+> * **Sealed Classes** restrict inheritance hierarchies to an explicitly declared list of subtypes (`permits`). 
+> * Combined with **Pattern Matching (`switch`)**, they enable exhaustive domain modeling (Algebraic Data Types) where the compiler enforces coverage of all possible states without needing fallback `default` clauses, turning runtime bugs into instant compile-time errors.
+
+##### Q5: How does Generational ZGC differ from G1GC, and when should you choose it in an enterprise system?
+> **Answer:** 
+> * **G1GC (Garbage-First)** divides the heap into regions and balances throughput with pause times (typically 100–200ms target pauses). It still incurs Stop-the-World pauses during certain phases (like remarking and evacuation).
+> * **Generational ZGC** performs almost all collection phases concurrently using colored pointers and load barriers, separating young and old generation objects. It guarantees **sub-millisecond pause times (<1ms)** even on multi-terabyte heaps.
+> * Choose **ZGC** in ultra-low latency, SLA-critical systems (e.g., banking settlements, live trading, real-time logistics tracking) where multi-second GC pauses violate regulatory or business requirements.
+</file>
+
+<file path="chapter-4-8.md">
+# CHAPTER 4: The Spring Boot Power Grid
+### *Inversion of Control, Dependency Injection & The Bean Lifecycle*
+
+```
+                 [ The IoC Dispatcher / Substation ]
+                                 │
+     ┌───────────────────────────┼───────────────────────────┐
+     ▼                           ▼                           ▼
+[ Radar Bean ]          [ JetBridge Bean ]          [ Baggage Bean ]
+(Singleton Grid)        (Singleton Grid)            (Prototype Pod)
+     │                           │                           │
+     └─────────────── Standardized Conduit Plug ─────────────┘
+                                 │
+               [ @Service / Constructor Injection ]
+```
+
+---
+
+### 1. THE MENTAL MODEL
+Imagine building a modern international airport.
+
+In a naive, amateur design, every time a baggage scanner needs electricity, the scanner’s operator builds a dedicated coal-fired generator directly inside the check-in booth. When the flight radar system needs power, the air traffic controller leaves the tower, digs a trench, and constructs a separate hydroelectric dam. 
+
+If twenty systems need a clock signal, twenty mechanical clocks are built, each ticking at a slightly different frequency. The terminal becomes a tangled deathtrap of unshielded cables, competing generators, and catastrophic single points of failure.
+
+**Spring Boot is the Centralized High-Voltage Automated Power Grid.**
+
+* **The ApplicationContext (The Central Substation):** It owns the power generation. It reads the master airport blueprints (`@Configuration`, `@Component`), manufactures the heavy machinery (Beans), initializes them in the correct sequence, and ensures they meet safety regulations before turning the power on.
+* **Inversion of Control (IoC):** Individual devices *never* build their own power sources. They surrender control to the Substation. A device simply exposes an industry-standard three-prong socket.
+* **Dependency Injection (DI):** The Substation locates the exact transformer the device requires and plugs it in at runtime.
+* **Bean Scopes:** 
+  * **Singleton (The Terminal Air Conditioning):** Exactly one shared, uninterrupted system powers the entire airport.
+  * **Prototype (The Boarding Pass Printout):** A brand-new, independent instance is stamped out every single time someone requests one.
+  * **Request/Session Scope (The Passenger Luggage Cart):** Spawned the moment a traveler enters the building, retained throughout their journey, and dismantled when they depart.
+
+---
+
+### 2. THE MECHANICS
+
+#### 2.1 Constructor Injection vs. Field Injection
+In enterprise banking systems, **Field Injection (`@Autowired` on private fields) is an uninsulated live wire.** It hides dependencies, makes unit testing without reflection impossible, and allows circular dependencies to metastasize undetected. 
+
+**Always use Constructor Injection with immutability (`final`).**
+
+```java
+// ❌ ANTI-PATTERN: Field Injection (Fragile, untestable, hidden dependencies)
+@Service
+public class FragilePaymentService {
+    @Autowired
+    private AccountRepository accountRepository;
+    @Autowired
+    private FraudCheckService fraudCheckService;
+}
+
+// ✅ ENTERPRISE STANDARD: Constructor Injection with Record / Lombok / Explicit final
+@Service
+public class ResilientPaymentService {
+
+    private final AccountRepository accountRepository;
+    private final FraudCheckService fraudCheckService;
+
+    // Explicit constructor: Dependencies are visible, non-null, and easily mocked in JUnit
+    public ResilientPaymentService(AccountRepository accountRepository, 
+                                   FraudCheckService fraudCheckService) {
+        this.accountRepository = Objects.requireNonNull(accountRepository, "AccountRepository must not be null");
+        this.fraudCheckService = Objects.requireNonNull(fraudCheckService, "FraudCheckService must not be null");
+    }
+
+    public TransactionReceipt processTransfer(TransferRequest request) {
+        fraudCheckService.verifyTransaction(request);
+        return accountRepository.executeTransfer(request);
+    }
+}
+```
+
+---
+
+#### 2.2 The Bean Lifecycle Pipeline
+When Spring Boot powers up, a Bean passes through an assembly line before serving traffic:
+
+```
+ [1. Instantiation] ──> [2. Populate Properties] ──> [3. BeanPostProcessor (Before)]
+                                                              │
+ [6. Destruction]   <── [5. Ready for Traffic]   <── [4. @PostConstruct / Init]
+```
+
+```java
+@Component
+@Slf4j
+public class VaultSecurityGateway implements InitializingBean, DisposableBean {
+
+    @Value("${bank.vault.encryption-algorithm:AES-256}")
+    private String encryptionAlgorithm;
+
+    public VaultSecurityGateway() {
+        log.info("[Phase 1] Constructor: Memory allocated. Dependencies NOT injected yet.");
+    }
+
+    @PostConstruct
+    public void initSecurityHandshake() {
+        // Safe to execute logic relying on injected properties/beans
+        log.info("[Phase 4] @PostConstruct: Establishing secure channel with algorithm: {}", encryptionAlgorithm);
+    }
+
+    @Override
+    public void afterPropertiesSet() {
+        log.info("[Phase 4b] InitializingBean: Secondary initialization hook.");
+    }
+
+    @PreDestroy
+    public void prepareForShutdown() {
+        log.warn("[Phase 6] @PreDestroy: Terminating active TLS tunnels & flushing audit logs.");
+    }
+
+    @Override
+    public void destroy() {
+        log.warn("[Phase 6b] DisposableBean: Final resource cleanup complete.");
+    }
+}
+```
+
+---
+
+#### 2.3 Spring Dynamic Proxies & The Transaction Illusion
+Annotations like `@Transactional`, `@Async`, and `@Cacheable` do not alter your bytecode directly; **Spring wraps your Bean inside a dynamic proxy transformer.**
+
+```
+Caller (Controller) ──> [ PROXY INTERCEPTOR ] ──> Target Bean (Service)
+                             │
+                      1. Open DB Transaction
+                      2. Try: Invoke Target Method
+                      3. Catch: Rollback DB Transaction
+                      4. Finally: Commit DB Transaction
+```
+
+---
+
+### 3. THE ENTERPRISE PITFALLS
+
+#### 💣 War Story: The Self-Invocation Phantom Rollback
+* **Context:** A logistics application updates warehouse inventory. If the balance drops below zero, it must log an audit entry and rollback.
+* **The Bug:** A developer called a `@Transactional` method from another method *inside the exact same class*.
+* **Why it blew up:** The call bypassed the dynamic proxy transformer entirely. The code executed as plain Java without interceptors—**no transaction was ever opened, and zero rollbacks occurred during a database outage.**
+
+```java
+@Service
+public class WarehouseStockService {
+
+    // Main entry point
+    public void processShipmentBatch(List<Item> items) {
+        for (Item item : items) {
+            // ❌ FAILS TO OPEN TRANSACTION: Bypasses Spring Proxy!
+            this.updateSingleItemWithLock(item); 
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void updateSingleItemWithLock(Item item) {
+        // Updates stock...
+    }
+}
+
+// ✅ THE FIX: Isolate transactional boundaries into separate injected collaborators,
+// or use TransactionTemplate programmatically.
+```
+
+#### 💣 War Story: Mutating Shared State in a Singleton Bean
+* **Context:** A high-throughput banking payment routing service.
+* **The Bug:** Storing a temporary `currentTransactionId` inside an instance variable of a `@Service` class.
+* **Why it blew up:** In Spring, `@Service` beans are **Singletons**. 500 concurrent threads shared that single instance variable, overwriting each other’s transaction IDs and crediting funds to wrong accounts.
+* **Rule:** **Singleton Beans MUST be completely stateless or strictly thread-safe.**
+
+---
+
+### 4. THE INTERVIEW CHEAT SHEET
+
+##### Q1: Why is Constructor Injection strictly preferred over Field Injection?
+> **Answer:** Constructor injection enforces **immutability** (`final` fields), guarantees that an object cannot be instantiated in an invalid/incomplete state, prevents `NullPointerException` during standalone unit testing (without needing a heavyweight Spring context or reflection), and immediately surfaces **circular dependencies** at startup rather than failing at runtime.
+
+##### Q2: What is the exact difference between `@Component`, `@Service`, and `@Repository`?
+> **Answer:** Mechanically, `@Service` and `@Repository` are specialized meta-annotations of `@Component` and share the same singleton lifecycle. Structurally, they convey architectural intent (DDD layers). Functionally, `@Repository` enables automatic **persistence exception translation** (converting vendor-specific SQL exceptions into Spring’s `DataAccessException` hierarchy).
+
+##### Q3: How does `@Transactional` work under the hood, and when does it fail silently?
+> **Answer:** Spring creates a **CGLIB or JDK Dynamic Proxy** around the bean. The proxy intercepts the call, starts a transaction via the `PlatformTransactionManager`, executes the target method, and commits/rolls back. It fails silently during **self-invocation** (calling a transactional method from within the same bean), when placed on `private`/`protected` methods, or when an exception thrown is a checked exception (unless `rollbackFor = Exception.class` is explicitly set).
+
+##### Q4: What happens during the Spring Bean Lifecycle between instantiation and readiness?
+> **Answer:** 
+> 1. Constructor runs (instance created).
+> 2. Dependencies and properties injected.
+> 3. Aware interfaces invoked (`BeanNameAware`, `ApplicationContextAware`).
+> 4. `BeanPostProcessor.postProcessBeforeInitialization()`.
+> 5. `@PostConstruct` / `InitializingBean.afterPropertiesSet()` run.
+> 6. `BeanPostProcessor.postProcessAfterInitialization()` (where Dynamic Proxies for transactions/security are wrapped).
+> 7. The Bean is placed in the context cache, ready for traffic.
+
+##### Q5: How do `@Configuration` and `@Component` differ when defining `@Bean` methods?
+> **Answer:** Classes annotated with `@Configuration` are enhanced with **CGLIB proxies**. When one `@Bean` method calls another `@Bean` method inside a `@Configuration` class, the proxy intercepts it and returns the cached singleton instance. In a regular `@Component` (Lite mode), calling another `@Bean` method executes plain Java, creating a brand-new, unmanaged instance and breaking singleton guarantees.
+
+---
+---
+
+# CHAPTER 8: The Fluid Conveyor Belts
+### *Reactive Streams with RxJS & Angular 14+ UI Architecture*
+
+```
+  Source Stream (Baggage on Belt) ──[ [Luggage A] ─── [Luggage B] ─── [Luggage C] ]──>
+                                           │
+                                     [ filter() ]   ──> Rejects non-compliant bags
+                                           │
+                                    [ switchMap() ] ──> Cancels old lookup; starts new
+                                           │
+                                    [ catchError() ]──> Reroutes damaged bags safely
+                                           │
+  Terminal Screen (Async Pipe)   <── [ UI Consumer ]
+```
+
+---
+
+### 1. THE MENTAL MODEL
+Picture the automated luggage routing hub inside an international terminal.
+
+A continuous stream of bags rolls down high-speed conveyor belts. The bags are not sitting static in a storage unit; they are moving in **real-time events over time**.
+
+* **The Observable (The Conveyor Belt):** A timeline emitting items (data), errors (jams), or a completion signal (end of flight unloading).
+* **The Observer / Subscriber (The Ground Crew at the Carousel):** The crew waits at the end of the belt. If no crew member subscribes to the carousel, **the belt stays turned off** (Cold Observable).
+* **Operators (The Robotic Sorting Arms):**
+  * `map()`: Re-tags a bag with a new domestic barcode.
+  * `filter()`: Drops bags that fail weight limits off the side.
+  * `switchMap()`: When a VIP passenger arrives, the robotic arm instantly stops processing regular bags, throws away unfinished work, and switches entirely to the VIP stream.
+  * `concatMap()`: A strict security checkpoint. Bag #2 is *never* inspected until Bag #1 has completely cleared the X-ray machine.
+  * `exhaustMap()`: The physical barrier arm at a toll gate. Once hit, it ignores all incoming vehicles until the barrier has fully closed.
+* **Subjects (The Public Airport PA System):** A single master broadcast. It shouts flight updates to hundreds of passengers at the exact same moment (Hot Observable).
+
+---
+
+### 2. THE MECHANICS
+
+#### 2.1 Flattening Operators Matrix: The Golden Decision Table
+
+| Operator | Behavior | Real-World Airport Analogy | Perfect Use Case |
+| :--- | :--- | :--- | :--- |
+| **`switchMap`** | Cancels previous inner stream when a new value arrives. | Passenger changes destination at counter: tear up old boarding pass immediately. | Live search/autocomplete, Route parameter changes. |
+| **`concatMap`** | Queues inner streams sequentially, preserving order. | Single-file customs passport checkpoint. | Financial transaction queues, sequential file uploads. |
+| **`mergeMap`** | Runs all inner streams concurrently in parallel. | 5 baggage unloading doors running simultaneously. | Parallel data fetching without order guarantees. |
+| **`exhaustMap`** | Ignores new incoming values until current stream finishes. | Locked emergency exit door: button presses ignored while cycle runs. | "Submit Payment" or "Save Changes" button double-click guard. |
+
+---
+
+#### 2.2 Enterprise Angular Component Implementation (Angular 14+ Standalone & Reactive Patterns)
+
+```typescript
+import { Component, OnInit, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { ReactiveFormsModule, FormControl } from '@angular/forms';
+import { Observable, Subject, of } from 'rxjs';
+import { 
+  debounceTime, 
+  distinctUntilChanged, 
+  switchMap, 
+  catchError, 
+  tap, 
+  takeUntil 
+} from 'rxjs/operators';
+import { LogisticsService, CargoManifest } from './logistics.service';
+
+@Component({
+  selector: 'app-cargo-tracker',
+  standalone: true,
+  imports: [CommonModule, ReactiveFormsModule],
+  template: `
+    <div class="tracker-panel">
+      <h2>🛄 Real-Time Cargo Manifest Tracker</h2>
+      
+      <!-- Reactive Input Control -->
+      <input 
+        type="text" 
+        [formControl]="searchControl" 
+        placeholder="Enter Container Tracking ID..." 
+        class="form-input"
+      />
+
+      <div *ngIf="isLoading" class="spinner">Scanning Manifest Grid...</div>
+
+      <!-- Reactive UI Binding via AsyncPipe: Automatic Subscription & Teardown -->
+      <ng-container *ngIf="manifest$ | async as manifest; else emptyState">
+        <div class="manifest-card" [class.critical]="manifest.requiresCustomsClearance">
+          <h3>Container: {{ manifest.containerId }}</h3>
+          <p>Location: {{ manifest.currentTerminal }} | Weight: {{ manifest.weightKg }}kg</p>
+          <span class="status-badge">{{ manifest.status }}</span>
+        </div>
+      </ng-container>
+
+      <ng-template #emptyState>
+        <p class="placeholder-text">No container currently tracked.</p>
+      </ng-template>
+    </div>
+  `
+})
+export class CargoTrackerComponent implements OnInit {
+  private readonly logisticsService = inject(LogisticsService);
+
+  searchControl = new FormControl<string>('', { nonNullable: true });
+  manifest$!: Observable<CargoManifest | null>;
+  isLoading = false;
+
+  ngOnInit(): void {
+    this.manifest$ = this.searchControl.valueChanges.pipe(
+      // 1. Debounce to prevent flooding the backend on every keystroke
+      debounceTime(300),
+      // 2. Ignore duplicate sequential emissions
+      distinctUntilChanged(),
+      // 3. Set UI loading indicator
+      tap(() => this.isLoading = true),
+      // 4. Switch to new HTTP request, automatically cancelling in-flight stale requests
+      switchMap((trackingId: string) => {
+        if (!trackingId.trim()) {
+          this.isLoading = false;
+          return of(null);
+        }
+        return this.logisticsService.fetchManifest(trackingId).pipe(
+          // 5. Catch error at the INNER stream level to keep the outer pipeline alive!
+          catchError((err) => {
+            console.error('Failed to retrieve manifest', err);
+            return of(null);
+          })
+        );
+      }),
+      // 6. Reset UI loading state
+      tap(() => this.isLoading = false)
+    );
+  }
+}
+```
+
+---
+
+### 3. THE ENTERPRISE PITFALLS
+
+#### 💣 War Story: The Ghost Passenger Memory Leak
+* **Context:** An Angular dashboard in a central bank tracking real-time interbank wire settlements.
+* **The Bug:** A developer manually called `.subscribe()` inside `ngOnInit` on a WebSocket stream without saving the subscription or unsubscribing when the component was destroyed.
+* **Why it blew up:** The bank’s traders navigated between tabs all day. Each navigation spawned a new listener while the old ones remained alive in heap memory. By 2:00 PM, 4,000 dangling subscriptions were processing updates in the background, consuming 4GB of RAM and crashing the browser tab during a high-volatility market open.
+
+```typescript
+// ❌ ANTI-PATTERN: Manual unmanaged subscription
+export class LeakyComponent implements OnInit {
+  ngOnInit() {
+    this.streamService.getLiveRates().subscribe(rate => this.rate = rate);
+    // Never cleaned up when component is destroyed!
+  }
+}
+
+// ✅ ENTERPRISE STANDARD 1: The async pipe handles subscription and unsubscription automatically
+// In template: <div *ngIf="liveRates$ | async as rate">{{ rate }}</div>
+
+// ✅ ENTERPRISE STANDARD 2: Modern Angular (v16+) takeUntilDestroyed operator
+export class CleanComponent {
+  private destroyRef = inject(DestroyRef);
+  
+  constructor(streamService: StreamService) {
+    streamService.getLiveRates()
+      .pipe(takeUntilDestroyed())
+      .subscribe(rate => this.rate = rate);
+  }
+}
+```
+
+#### 💣 War Story: The Silent Death of the Conveyor Belt (`catchError` Placement)
+* **Context:** An automated order processing form in an industrial supply chain portal.
+* **The Bug:** Placing `catchError` outside the `switchMap` at the root pipeline level.
+* **Why it blew up:** When an HTTP 404 or 500 error occurred once, `catchError` caught it, returned a fallback, and **permanently completed the Observable**. The user typed new tracking numbers into the input, but the entire stream was dead. The form stopped responding until the user refreshed the whole browser.
+* **Rule:** **Always catch errors inside the inner Observable (`inside switchMap/mergeMap`) to preserve the parent stream.**
+
+---
+
+### 4. THE INTERVIEW CHEAT SHEET
+
+##### Q1: What is the operational difference between `switchMap`, `mergeMap`, `concatMap`, and `exhaustMap`?
+> **Answer:** 
+> * `switchMap` cancels in-flight inner streams when a new emission arrives (ideal for search inputs).
+> * `mergeMap` handles multiple inner streams concurrently without cancellation (ideal for parallel background tasks).
+> * `concatMap` queues inner streams in strict order, waiting for each to complete before starting the next (essential for sequential transactional operations).
+> * `exhaustMap` ignores new source emissions while an inner stream is currently active (ideal for preventing duplicate form/payment submissions).
+
+##### Q2: Why is the `AsyncPipe` strictly preferred over manual `.subscribe()` in Angular?
+> **Answer:** The `AsyncPipe` automatically manages the entire subscription lifecycle: it subscribes when the view is initialized, automatically triggers change detection (`ChangeDetectorRef.markForCheck()`) when values arrive, and **automatically unsubscribes when the component view is destroyed**, eliminating memory leaks without requiring manual boilerplate (`takeUntil`, `Subscription.unsubscribe()`).
+
+##### Q3: What is the difference between a `Subject`, `BehaviorSubject`, and `ReplaySubject`?
+> **Answer:** 
+> * A `Subject` is a multicasting event bus with no memory; late subscribers only receive values emitted *after* subscription.
+> * A `BehaviorSubject` requires an initial seed value, stores the current latest emission, and immediately delivers that latest value to any new late subscriber.
+> * A `ReplaySubject` stores a specified buffer size ($N$ items or time window) and replays that buffer history to all new late subscribers.
+
+##### Q4: What happens if an error is thrown inside an RxJS pipeline without `catchError`?
+> **Answer:** The error is sent down the error notification channel, invoking the observer's error callback (if present) or throwing an unhandled exception. Crucially, **the stream immediately terminates permanently**; it will never emit another item, even if the upstream source continues to produce events.
+
+##### Q5: How do modern Angular Signals compare to RxJS Observables, and when should you use each?
+> **Answer:** 
+> * **Signals** are synchronous, glitch-free, reactive primitives designed for **state management and fine-grained DOM updates**. They always hold a value and do not manage asynchronous timing.
+> * **RxJS** is an asynchronous engine built for **complex event streams over time** (debouncing, cancellation, coordination of multiple async streams, WebSockets, HTTP requests).
+> * In modern architecture, RxJS coordinates complex asynchronous data fetching, and the results are converted to Signals (via `toSignal()`) to power the component view state cleanly.
+</file>
+
+<file path="chapter-4.md">
+# CHAPTER 4: The Spring Boot Power Grid
+### *Inversion of Control, Dependency Injection & The Bean Lifecycle*
+
+```
+                 [ THE CENTRAL SUBSTATION: ApplicationContext ]
+                                       │
+     ┌─────────────────────────────────┼─────────────────────────────────┐
+     ▼                                 ▼                                 ▼
+[ Radar Bean ]                [ JetBridge Bean ]                [ Cargo Scanner Bean ]
+(Singleton Grid)              (Singleton Grid)                  (Prototype Pod)
+     │                                 │                                 │
+     └───────────────────── Standardized Conduit Plug ───────────────────┘
+                                       │
+                   [ @Service / Final Constructor Injection ]
+                                       │
+                                       ▼
+                     [ Dynamic Proxy Interceptor Layer ]
+                     ( @Transactional / @PreAuthorize )
+```
+
+---
+
+### 1. THE MENTAL MODEL
+
+Imagine building a modern international mega-airport from scratch.
+
+In an amateur design, every time a baggage scanner needs electricity, the technician behind the desk lays a dedicated copper wire out the window, runs it across the tarmac, and builds a miniature diesel generator in the parking lot. When the flight radar system needs time synchronization, an air traffic controller constructs a private mechanical pendulum clock in the control tower.
+
+When 200 different instruments each build, manage, and fuel their own isolated power generators, three fatal conditions arise:
+1. **Unchecked Proliferation:** You have 5,000 tiny combustion engines sputtering across the terminals, consuming vast resources and leaking toxic exhaust.
+2. **Hidden Failure Points:** If a generator catches fire behind a drywall partition, nobody knows who built it or how to shut it down.
+3. **Rigid Inflexibility:** If you want to switch from diesel fuel to solar power, you have to dismantle and rebuild all 5,000 appliances by hand.
+
+**Spring Boot is the Centralized High-Voltage Automated Power Grid.**
+
+* **The Inversion of Control (IoC) Container / `ApplicationContext` (The Central Substation):** It owns the generation and dispatching of power. It parses the airport engineering schematics (`@Configuration`, `@Component`, `@Service`), manufactures the heavy machinery (**Beans**), wires the infrastructure together in strict dependency order, and monitors operational health.
+* **Inversion of Control (IoC):** Appliances *never* build their own power plants (`new HeavyService()`). Instead, they surrender control. An appliance simply exposes an industry-standard three-prong conduit socket.
+* **Dependency Injection (DI):** The central substation spots the socket and injects the exact transformer matching the required specification at startup.
+* **Bean Scopes:**
+  * **Singleton (The Terminal Air Conditioning):** Exactly one shared, uninterrupted system keeps the entire airport climate-controlled. Every room connects to the same master airflow.
+  * **Prototype (The Printed Boarding Pass):** A brand-new, independent, stateful paper slip is stamped out every single time an agent presses the button.
+  * **Request Scope (The Passenger Luggage Trolley):** Checked out the moment a passenger steps through the front door, retained across transit, and completely dismantled/recycled when the traveler exits.
+* **Dynamic Proxies (The Transparent Power Transformer):** When an appliance requests a line with Surge Protection (`@Transactional`) or an Encrypted Voltage Regulator (`@PreAuthorize`), Spring does not plug the wire directly into the device. It routes the wire through a transparent transformer box (a CGLIB or JDK Dynamic Proxy) that intercepts and verifies the current before it ever touches the appliance.
+
+---
+
+### 2. THE MECHANICS
+
+#### 2.1 Constructor Injection: The Immutability Standard
+In modern enterprise development (Spring Boot 3+ and Java 17/21), **Field Injection via `@Autowired` on private fields is an uninsulated fire hazard.**
+
+| Injection Style | Immutability (`final`) | Pure Unit Testability (Without Spring/Reflection) | Circular Dependency Detection |
+| :--- | :--- | :--- | :--- |
+| **Field Injection (`@Autowired private Svc x;`)** | ❌ Impossible | ❌ Requires reflection or `MockitoExtension` | ❌ Fails at runtime during call |
+| **Setter Injection (`@Autowired setSvc(Svc x)`)** | ❌ Mutable | ⚠️ Fragile (State can change post-init) | ⚠️ May mask architectural flaws |
+| **Constructor Injection (`final Svc x`)** | ✔ **Guaranteed** | ✔ **Instantiate with plain `new` in JUnit** | ✔ **Fails fast at container startup** |
+
+```java
+package com.astek.banking.vault.service;
+
+import com.astek.banking.vault.domain.Account;
+import com.astek.banking.vault.repository.AccountRepository;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
+import java.util.Objects;
+
+@Slf4j
+@Service
+public class SettlementService {
+
+    // 1. Dependencies declared as final: guarantees immutability and thread safety
+    private final AccountRepository accountRepository;
+    private final FraudAuditEngine fraudAuditEngine;
+
+    // 2. Explicit constructor injection (No @Autowired annotation needed in Spring 4.3+)
+    public SettlementService(AccountRepository accountRepository, 
+                             FraudAuditEngine fraudAuditEngine) {
+        this.accountRepository = Objects.requireNonNull(accountRepository, "AccountRepository cannot be null");
+        this.fraudAuditEngine = Objects.requireNonNull(fraudAuditEngine, "FraudAuditEngine cannot be null");
+    }
+
+    public void settleInterbankDebit(String accountIban, BigDecimal amount) {
+        fraudAuditEngine.assertAccountInGoodStanding(accountIban);
+        Account account = accountRepository.findByIbanForUpdate(accountIban)
+                .orElseThrow(() -> new IllegalArgumentException("Target account not found"));
+        
+        account.debit(amount);
+        accountRepository.save(account);
+        log.info("Successfully settled interbank debit of {} for IBAN: {}", amount, accountIban);
+    }
+}
+```
+
+---
+
+#### 2.2 The Complete 7-Phase Bean Lifecycle Pipeline
+
+Before a Spring Bean can serve a single HTTP request or process an asynchronous event, it must pass through an automated factory pipeline:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          SPRING BEAN LIFECYCLE                              │
+│                                                                             │
+│  [ Phase 1: Instantiation ]                                                 │
+│       │  JVM calls Constructor / Reflective instance creation               │
+│       ▼                                                                     │
+│  [ Phase 2: Populate Properties & Dependencies ]                            │
+│       │  Spring injects all constructor dependencies and @Value fields      │
+│       ▼                                                                     │
+│  [ Phase 3: Aware Interface Callbacks ]                                     │
+│       │  BeanNameAware, ApplicationContextAware, EnvironmentAware           │
+│       ▼                                                                     │
+│  [ Phase 4: BeanPostProcessor (Before Initialization) ]                     │
+│       │  Custom interceptors execute: postProcessBeforeInitialization()     │
+│       ▼                                                                     │
+│  [ Phase 5: Initialization Hooks ]                                          │
+│       │  1. @PostConstruct method runs                                      │
+│       │  2. InitializingBean.afterPropertiesSet() runs                      │
+│       │  3. Custom init-method defined in @Bean(initMethod = "...") runs    │
+│       ▼                                                                     │
+│  [ Phase 6: BeanPostProcessor (After Initialization) ]                      │
+│       │  Spring wraps the raw Bean inside Dynamic Proxies                   │
+│       │  (CGLIB/JDK for @Transactional, @Async, @Cacheable)                 │
+│       ▼                                                                     │
+│  [ Phase 7: Bean is LIVE (Serving Requests in ApplicationContext) ]         │
+│       │                                                                     │
+│       ▼ (Application Shutdown Signal SIGTERM)                               │
+│  [ Phase 8: Teardown / Destruction Hooks ]                                  │
+│          1. @PreDestroy method runs                                         │
+│          2. DisposableBean.destroy() runs                                   │
+│          3. Custom destroyMethod runs                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### Production Lifecycle Implementation:
+```java
+package com.astek.logistics.warehouse;
+
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.BeanNameAware;
+import org.springframework.beans.factory.DisposableBean;
+import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+@Slf4j
+@Component
+public class AutomatedLuggageCarrouselHub implements BeanNameAware, InitializingBean, DisposableBean {
+
+    private String beanName;
+
+    @Value("${airport.terminal.carrousel-speed-rpm:45}")
+    private int motorRpm;
+
+    public AutomatedLuggageCarrouselHub() {
+        log.info("[Phase 1] Constructor: Memory allocated. motorRpm is not yet injected (0).");
+    }
+
+    @Override
+    public void setBeanName(String name) {
+        this.beanName = name;
+        log.info("[Phase 3] Aware Hook: Bean registered in container namespace as '{}'", this.beanName);
+    }
+
+    @PostConstruct
+    public void onPostConstruct() {
+        log.info("[Phase 5a] @PostConstruct: Properties injected. Calibrating motor to {} RPM.", motorRpm);
+    }
+
+    @Override
+    public void afterPropertiesSet() {
+        log.info("[Phase 5b] InitializingBean: Running mechanical failsafe diagnostics.");
+    }
+
+    public void processBaggageTag(String luggageId) {
+        log.info("Routing luggage '{}' across carrousel...", luggageId);
+    }
+
+    @PreDestroy
+    public void onPreDestroy() {
+        log.warn("[Phase 8a] @PreDestroy: SIGTERM received. Initiating controlled deceleration of carrousel.");
+    }
+
+    @Override
+    public void destroy() {
+        log.warn("[Phase 8b] DisposableBean: Power disconnected. Carrousel safely parked.");
+    }
+}
+```
+
+---
+
+#### 2.3 Under the Hood: CGLIB vs. JDK Dynamic Proxies
+
+Spring achieves declarative features like `@Transactional` by applying the **Proxy Design Pattern**. The client never talks directly to your bean; it talks to a dynamically generated proxy.
+
+```
+Caller (e.g., RestController)
+             │
+             ▼
+┌─────────────────────────────────────────────────────────┐
+│              CGLIB / JDK DYNAMIC PROXY                  │
+│                                                         │
+│  1. Intercept method invocation                         │
+│  2. PlatformTransactionManager.getTransaction(...)      │
+│  3. try {                                               │
+│         targetBean.executeTransfer();                   │
+│         PlatformTransactionManager.commit(...);         │
+│     } catch (RuntimeException ex) {                     │
+│         PlatformTransactionManager.rollback(...);       │
+│         throw ex;                                       │
+│     }                                                   │
+└────────────────────────────┬────────────────────────────┘
+                             │
+                             ▼
+               [ Target Real Bean Method ]
+```
+
+* **JDK Dynamic Proxies:** Used when the target class implements an `interface`. The proxy implements the same interface and routes calls via an `InvocationHandler`.
+* **CGLIB Proxies:** Used when the target class does not implement an interface (or by default in Spring Boot 2.x/3.x via `spring.aop.proxy-target-class=true`). CGLIB generates a dynamic subclass of your bean at runtime.
+* **Crucial Takeaway:** Because CGLIB creates a subclass, **`@Transactional` methods and classes cannot be marked `final`**, and `private` methods cannot be intercepted.
+
+---
+
+#### 2.4 Type-Safe Configuration with `@ConfigurationProperties`
+
+In enterprise architectures, scattering `@Value("${some.property}")` across dozens of classes causes configuration drift, silent runtime typos, and zero validation.
+
+**Spring Boot 3 enforces type-safe, validated Configuration Records.**
+
+```java
+package com.astek.banking.config;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
+
+import java.time.Duration;
+
+@Validated
+@ConfigurationProperties(prefix = "bank.settlement")
+public record SettlementProperties(
+    @NotBlank String clearingHouseCode,
+    @Min(1) @Max(5000000) long maxDailyTransferLimitEuros,
+    @NotNull Duration connectionTimeout,
+    @NotNull SslConfiguration ssl
+) {
+    public record SslConfiguration(
+        boolean enabled,
+        @NotBlank String keyStorePath,
+        @NotBlank String keyStorePassword
+    ) {}
+}
+```
+
+```yaml
+# application.yml
+bank:
+  settlement:
+    clearing-house-code: "SEPA-FR-PARIS-01"
+    max-daily-transfer-limit-euros: 2500000
+    connection-timeout: 5000ms
+    ssl:
+      enabled: true
+      key-store-path: "/var/secrets/keystore.p12"
+      key-store-password: "${SETTLEMENT_VAULT_PASSWORD}"
+```
+
+---
+
+### 3. THE ENTERPRISE PITFALLS
+
+#### 💣 War Story: The Self-Invocation Phantom Rollback
+* **Context:** An overnight batch settlement service in a corporate banking module.
+* **The Incident:** An unhandled exception was thrown during account rebalancing, but **zero database rollbacks occurred**. Millions in erroneous debits persisted in the database.
+* **The Root Cause:** A public method called another `@Transactional` method located **inside the exact same class instance**:
+
+```java
+@Service
+public class LedgerAuditService {
+
+    // Entry point called by Controller / Scheduled Task
+    public void processDailyAuditBatch(List<AuditRecord> records) {
+        for (AuditRecord record : records) {
+            // ❌ DIRECT THIS-CALL: Bypasses the Spring CGLIB Proxy!
+            // No transaction interceptor executes; rollback rules are completely ignored.
+            this.settleSingleRecord(record); 
+        }
+    }
+
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRES_NEW)
+    public void settleSingleRecord(AuditRecord record) {
+        // Mutates database ledger...
+        if (record.isCorrupted()) {
+            throw new IllegalStateException("Corrupted audit trace detected!");
+        }
+    }
+}
+```
+
+* **The Architectural Fix:**
+  1. **Preferred (Clean DDD):** Move `settleSingleRecord` into a separate, focused collaborator bean (e.g., `SingleRecordSettlementEngine`) and inject it.
+  2. **Programmatic (Zero Reflection):** Use Spring’s `TransactionTemplate` directly:
+
+```java
+@Service
+@RequiredArgsConstructor
+public class ResilientLedgerService {
+
+    private final TransactionTemplate transactionTemplate;
+
+    public void processDailyAuditBatch(List<AuditRecord> records) {
+        for (AuditRecord record : records) {
+            // Explicit programmatic transaction boundary: 100% immune to self-invocation bugs
+            transactionTemplate.execute(status -> {
+                settleSingleRecord(record);
+                return true;
+            });
+        }
+    }
+
+    private void settleSingleRecord(AuditRecord record) {
+        // Business logic...
+    }
+}
+```
+
+---
+
+#### 💣 War Story: The Mutable Shared State in a Singleton Bean
+* **Context:** An industrial logistics container tracking gateway handling 800 HTTP requests/second.
+* **The Incident:** During peak cargo dispatch hours, shipping container #90214 was rerouted to a harbor 4,000 miles away from its intended destination.
+* **The Root Cause:** A developer stored temporary request state in a class-level instance variable inside a Singleton `@Service`:
+
+```java
+// ❌ CRITICAL BUG: Singleton Beans are shared across ALL concurrent threads!
+@Service
+public class ContainerDispatchService {
+
+    // Shared mutable state on the Heap!
+    private String currentContainerDestination; 
+
+    public void routeContainer(String containerId, String destination) {
+        this.currentContainerDestination = destination; // Thread A writes "Rotterdam"
+        
+        simulateComplexLogisticsCalculation(); // Context switch: Thread B writes "Singapore"!
+        
+        // Thread A now reads "Singapore" instead of "Rotterdam"!
+        dispatchCraneToHarbor(containerId, this.currentContainerDestination); 
+    }
+}
+```
+
+* **The Rule:** **Spring Singleton Beans must remain strictly stateless or encapsulate thread-safe data structures (`ConcurrentHashMap`, `AtomicReference`). State must live inside local method variables (on the thread stack) or scoped request objects.**
+
+---
+
+### 4. THE INTERVIEW CHEAT SHEET
+
+##### Q1: What is the operational difference between Constructor Injection, Field Injection, and Setter Injection?
+> **Answer:** 
+> * **Constructor Injection** guarantees immutability (`final` fields), guarantees that an object cannot be instantiated in an uninitialized state, enables simple unit testing with plain `new` operators without needing Spring reflection, and forces circular dependencies to fail fast at application startup.
+> * **Field Injection (`@Autowired` on private fields)** tightly couples code to the Spring Container, masks architectural complexity by making it too easy to add excessive dependencies, and prevents `final` field declaration.
+> * **Setter Injection** should only be used for genuinely optional dependencies that can be reconfigured dynamically at runtime.
+
+##### Q2: What are the distinct Scopes available in Spring, and what is a "Scoped Proxy"?
+> **Answer:** 
+> * Core scopes include: **Singleton** (one shared instance per `ApplicationContext`), **Prototype** (new instance on every injection/lookup), **Request** (one per HTTP request lifecycle), **Session** (one per HTTP Session), and **Application** (scoped to `ServletContext`).
+> * A **Scoped Proxy** (`proxyMode = ScopedProxyMode.TARGET_CLASS`) is required when injecting a short-lived scoped bean (e.g., Request-scoped) into a longer-lived bean (e.g., Singleton). Because the Singleton is instantiated once at startup, Spring injects a dynamic proxy standing in for the short-lived bean. When the Singleton invokes the proxy, the proxy delegates the call to the active request bean instance on the current thread.
+
+##### Q3: How do `@Configuration` and `@Component` differ when defining `@Bean` methods?
+> **Answer:** 
+> * Classes annotated with `@Configuration` are enhanced at startup using **CGLIB bytecode generation (Full Mode)**. If one `@Bean` method invokes another `@Bean` method inside the same configuration class, the CGLIB proxy intercepts the call and returns the cached singleton instance, preserving singleton guarantees.
+> * In a standard `@Component` class (Lite Mode), `@Bean` methods are executed as plain Java method calls without proxy interception; invoking one `@Bean` method from another creates a brand-new, unmanaged instance, breaking singleton semantics.
+
+##### Q4: What is the BeanPostProcessor interface, and how does Spring use it?
+> **Answer:** `BeanPostProcessor` is a core internal extension interface comprising two methods: `postProcessBeforeInitialization` and `postProcessAfterInitialization`. 
+> * It allows custom modification or wrapping of newly created bean instances. 
+> * Spring internally uses `BeanPostProcessors` to process annotations like `@Autowired`, `@Value`, and `@PostConstruct`, and to wrap raw target beans into **Dynamic Proxies** for AOP features such as `@Transactional`, `@Async`, and `@Retryable`.
+
+##### Q5: Why are circular dependencies disabled by default in Spring Boot 2.6+ / 3.x, and how do you resolve them cleanly?
+> **Answer:** Circular dependencies indicate a **flaw in domain boundaries and architectural design** (e.g., Service A depends on Service B, which depends on Service A), violating the Single Responsibility Principle and complicating deterministic startup order. 
+> * To resolve them cleanly:
+>   1. Refactor common logic into a third collaborator bean (Service C).
+>   2. Decouple interaction using **Application Events (`ApplicationEventPublisher`)** or asynchronous messaging.
+>   3. As a temporary workaround, annotate one injection point with `@Lazy` to defer bean resolution until first use.
+</file>
+
+<file path="chapter-5.md">
+# CHAPTER 5: The Master Vault & Ledger
+### *Spring Data JPA, Hibernate Internals, Connection Pools & Database Performance*
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       THE HIKARICP CONNECTION CONVOY                        │
+│                                                                             │
+│  [ Web Requests (500 Threads) ] ──► [ HikariCP Pool: 20 Heavy Trucks ]      │
+│                                              │                              │
+│         ┌────────────────────────────────────┴────────────────────────┐     │
+│         ▼                                                             ▼     │
+│  [ Transaction A ]                                             [ Transaction B ]
+│  1. Check out Connection                                       1. Check out Connection
+│  2. Open Persistence Context (Desk)                            2. Open Persistence Context (Desk)
+│  3. Read Account #402 (SELECT FOR UPDATE)                      3. Read Account #899
+│  4. Dirty Check & Flush Commit                                 4. Read via DTO Projection
+│  5. Return Connection to Pool                                  5. Return Connection to Pool
+└─────────────────────────────────────────────────────────────────────────────┘
+
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                 THE PERSISTENCE CONTEXT (THE TELLER'S WORKBENCH)            │
+│                                                                             │
+│  Entity Snapshot (Read) ──► Entity Mutation (In Memory) ──► Dirty Check     │
+│         │                                                          │        │
+│         └──────────────────── Auto-Generated UPDATE ───────────────┘        │
+│                               (Only on Transaction Commit)                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 1. THE MENTAL MODEL
+
+Deep beneath the glass airport terminals and marble banking halls sits the Central Armored Vault—the physical Relational Database.
+
+Accessing this subterranean vault is physically demanding, strictly guarded, and subject to hard mechanical constraints. If every teller runs down to the vault every time a customer asks a question, the staircase collapses from overcrowding.
+
+* **The Database (The Physical Vault):** Heavy, durable, and ACID-compliant. Disk I/O and row locks are expensive operations.
+* **The Persistence Context / First-Level Cache (The Teller's Workbench):** When a teller opens account record `#402`, they do not run down the stairs to write every single penny change on the physical ledger. They bring the account file up to their private desk workbench (**The Persistence Context**). 
+  * They modify the balance in memory.
+  * Hibernate takes a mental photograph (**Snapshot**) when the file arrives.
+  * When the transaction ends, Hibernate compares the current workbench state against the snapshot (**Dirty Checking**) and makes exactly *one* batched trip down to the vault to commit the changes.
+* **HikariCP Connection Pool (The Fleet of Armored Escort Trucks):** You cannot give 5,000 web threads their own dedicated private highway lane to the database. The database CPU would melt from context-switching. Instead, HikariCP manages a lean, tuned fleet of 10 to 30 armored trucks (**Database Connections**). A thread checks out a truck, drives down to the vault, executes its operations, and returns the truck *immediately* to the pool.
+* **The $N+1$ Query Problem (The Inefficient Courier):** 
+  * A manager asks for 100 shipping pallets and their customs labels. 
+  * An amateur courier runs down to the vault to get the list of 100 pallet IDs (1 Query), and then makes **100 separate round trips** down the stairs to fetch each individual customs label ($N$ Queries = 101 total queries!). 
+  * A professional courier brings a multi-shelf forklift (`JOIN FETCH` or `@EntityGraph`) and retrieves all 100 pallets and their 100 labels in **one single trip**.
+* **Pessimistic vs. Optimistic Locking (Armed Guards vs. Holographic Security Seals):**
+  * **Pessimistic Locking (`SELECT FOR UPDATE`):** An armed guard blocks the door to Locker `#402`. No other teller can read or touch the box until the first teller walks away. Essential for zero-sum, low-inventory physical stock dispatch or high-frequency bank debits.
+  * **Optimistic Locking (`@Version`):** A tamper-evident holographic serial seal stamped on the box (`version = 1`). Three tellers can read the box simultaneously. Teller A writes an update and stamps the seal to `version = 2`. When Teller B tries to save their update with stamp `version = 1`, the vault alarm sounds (`OptimisticLockException`), aborting Teller B’s conflicting write.
+
+---
+
+### 2. THE MECHANICS
+
+#### 2.1 Enterprise Entity Architecture (Spring Boot 3+ / Hibernate 6+)
+
+In enterprise banking and supply chain systems, sloppy entity design causes severe memory leaks and recursive stack overflows. 
+
+**Rules of Enterprise Entity Design:**
+1. **Never use Lombok `@Data` on JPA Entities:** `@Data` generates `toString()`, `equals()`, and `hashCode()` that inspect every field, triggering lazy loading across entire databases and causing `StackOverflowError` in bidirectional relationships. Use `@Getter` and `@Setter` only.
+2. **Always set `@ManyToOne` and `@OneToOne` to `FetchType.LAZY`:** The JPA specification defaults these to `FetchType.EAGER`, causing hidden automatic join queries across your entire schema.
+3. **Use UUIDs or Business Sequence Identifiers:** Avoid raw auto-incrementing integer IDs for sensitive banking records to prevent enumeration attacks.
+
+```java
+package com.astek.banking.vault.entity;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import org.hibernate.annotations.NaturalId;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.Objects;
+import java.util.UUID;
+
+@Entity
+@Table(name = "bank_accounts", indexes = {
+    @Index(name = "idx_account_iban", columnList = "iban", unique = true)
+})
+@Getter
+@Setter
+@NoArgsConstructor
+public class BankAccount {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "account_id", updatable = false, nullable = false)
+    private UUID id;
+
+    @NaturalId
+    @Column(name = "iban", nullable = false, unique = true, length = 34)
+    private String iban;
+
+    @Column(name = "balance", nullable = false, precision = 19, scale = 4)
+    private BigDecimal balance;
+
+    @Column(name = "currency", nullable = false, length = 3)
+    private String currency;
+
+    // OPTIMISTIC LOCKING: Prevents lost updates under concurrent access
+    @Version
+    @Column(name = "version")
+    private Long version;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt = Instant.now();
+
+    public void debit(BigDecimal amount) {
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Debit amount must be strictly positive");
+        }
+        if (this.balance.compareTo(amount) < 0) {
+            throw new IllegalStateException("Insufficient funds in account: " + this.iban);
+        }
+        this.balance = this.balance.subtract(amount);
+    }
+
+    public void credit(BigDecimal amount) {
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Credit amount must be strictly positive");
+        }
+        this.balance = this.balance.add(amount);
+    }
+
+    // Explicit equals & hashCode based strictly on Business Key / Natural ID
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof BankAccount that)) return false;
+        return iban != null && Objects.equals(iban, that.iban);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(iban);
+    }
+}
+```
+
+---
+
+#### 2.2 Slaying the $N+1$ Query Problem: 3 Battle-Tested Solutions
+
+Given an `Order` entity that has a `@OneToMany` collection of `OrderItem` entities:
+
+```
+❌ The N+1 Problem in Action:
+Query 1: SELECT * FROM orders WHERE customer_id = ?;        (Returns 50 orders)
+Query 2..51: SELECT * FROM order_items WHERE order_id = ?;  (50 separate queries executed!)
+Total: 51 database roundtrips!
+```
+
+##### Solution 1: JPQL Explicit `JOIN FETCH`
+Forces Hibernate to issue a single SQL `INNER JOIN` or `LEFT JOIN`, pulling parent and child rows in one result set:
+
+```java
+public interface OrderRepository extends JpaRepository<Order, UUID> {
+
+    @Query("SELECT o FROM Order o JOIN FETCH o.items WHERE o.customer.id = :customerId")
+    List<Order> findAllByCustomerIdWithItems(@Param("customerId") UUID customerId);
+}
+```
+
+##### Solution 2: Dynamic `@EntityGraph`
+Declaratively overrides default lazy-loading properties on a per-query basis:
+
+```java
+public interface OrderRepository extends JpaRepository<Order, UUID> {
+
+    @EntityGraph(attributePaths = {"items", "items.product", "shippingAddress"})
+    @Query("SELECT o FROM Order o WHERE o.status = :status")
+    List<Order> findByStatusWithFullDetails(@Param("status") OrderStatus status);
+}
+```
+
+##### Solution 3: High-Performance Java Record DTO Projections
+When building read-heavy dashboards (e.g., in Angular), **do not load managed entities into the Persistence Context at all.** Fetch pure DTO records containing only the exact columns needed:
+
+```java
+// Immutable Java Record Projection
+public record OrderSummaryDto(
+    UUID orderId, 
+    String customerName, 
+    BigDecimal totalAmount, 
+    Instant orderDate
+) {}
+
+public interface OrderRepository extends JpaRepository<Order, UUID> {
+
+    @Query("""
+        SELECT new com.astek.logistics.dto.OrderSummaryDto(
+            o.id, 
+            o.customer.fullName, 
+            o.totalAmount, 
+            o.createdAt
+        ) 
+        FROM Order o 
+        WHERE o.warehouse.id = :warehouseId
+    """)
+    List<OrderSummaryDto> findSummariesByWarehouse(@Param("warehouseId") UUID warehouseId);
+}
+```
+* **Performance Gain:** Zero dirty checking overhead, zero snapshot memory allocation, and up to **10x faster query execution**.
+
+---
+
+#### 2.3 Locking Strategies in Banking & Logistics
+
+```java
+package com.astek.banking.vault.repository;
+
+import com.astek.banking.vault.entity.BankAccount;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.util.Optional;
+import java.util.UUID;
+
+public interface BankAccountRepository extends JpaRepository<BankAccount, UUID> {
+
+    /**
+     * PESSIMISTIC WRITE LOCK:
+     * Generates: SELECT * FROM bank_accounts WHERE iban = ? FOR UPDATE
+     * Blocks all concurrent transactions attempting to read (for update) or write this row
+     * until the holding transaction commits or rolls back.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT b FROM BankAccount b WHERE b.iban = :iban")
+    Optional<BankAccount> findByIbanForExclusiveUpdate(@Param("iban") String iban);
+
+    /**
+     * OPTIMISTIC LOCK:
+     * Reads row normally. On commit, checks: UPDATE ... WHERE id = ? AND version = ?
+     * Throws OptimisticLockException if version was incremented by another transaction.
+     */
+    Optional<BankAccount> findByIban(String iban);
+}
+```
+
+---
+
+#### 2.4 Sizing and Tuning HikariCP for Maximum Throughput
+
+A common junior mistake is setting connection pool sizes to massive numbers (e.g., `max-pool-size: 200`). This leads to severe disk contention, OS context switching, and database lock exhaustion.
+
+##### The PostgreSQL / HikariCP Pool Sizing Formula:
+$$\text{Pool Size} = (\text{CPU Cores} \times 2) + \text{Effective Spindle Count}$$
+
+For an 8-core database server with SSD storage: $(8 \times 2) + 1 = \mathbf{17 \text{ connections}}$.
+
+```yaml
+# application.yml
+spring:
+  datasource:
+    hikari:
+      pool-name: "BankingHikariCP"
+      maximum-pool-size: 20              # Max connections in pool
+      minimum-idle: 10                   # Minimum ready idle connections
+      idle-timeout: 300000               # 5 minutes before freeing idle connection
+      max-lifetime: 1800000              # 30 minutes: recycle connection before cloud drop
+      connection-timeout: 2000           # 2000ms: Fail FAST rather than hanging threads!
+      leak-detection-threshold: 5000     # Warn if a thread holds a connection > 5 seconds
+```
+
+---
+
+### 3. THE ENTERPRISE PITFALLS
+
+#### 💣 War Story: The Open Session in View (OSIV) Latency Trap
+* **Context:** An enterprise logistics portal displaying orders and delivery destinations.
+* **The Incident:** Under a modest load of 150 concurrent users, the entire application ground to a halt. All API requests timed out with `HikariPool-1 - Connection is not available, request timed out after 2000ms`.
+* **The Root Cause:** Spring Boot’s default configuration `spring.jpa.open-in-view=true`.
+* **Why it destroyed the system:** OSIV keeps the JPA `EntityManager` (and therefore the underlying physical JDBC database connection) **open throughout the entire HTTP request lifecycle**, including during Controller execution and JSON serialization. 
+* A remote client on a slow 3G cellular network took 1,500ms to download the JSON response. During those 1,500ms, **the database connection was held hostage**, doing zero database work while blocking other worker threads from acquiring a connection.
+* **The Fix:** Set `spring.jpa.open-in-view=false` in `application.yml` and explicitly fetch all required data within `@Transactional` service boundaries using DTO projections or `@EntityGraph`.
+
+---
+
+#### 💣 War Story: The Lost Update in Industrial Stock Allocation
+* **Context:** A high-throughput automated warehouse system managing inventory for Black Friday.
+* **The Incident:** Warehouse stock showed 10 remaining units of an enterprise server rack. Two customer orders for 6 units each arrived simultaneously on two separate server nodes. Both orders were approved, and 12 units were marked as sold. The warehouse ended up with **$-2$ inventory**, resulting in costly contract penalty fees.
+* **The Mechanism:**
+  1. Thread 1 reads `stock = 10`.
+  2. Thread 2 reads `stock = 10`.
+  3. Thread 1 computes $10 - 6 = 4$ and commits `stock = 4`.
+  4. Thread 2 computes $10 - 6 = 4$ and commits `stock = 4` (**The Lost Update!**).
+* **The Architectural Fix:** Enforce **Optimistic Locking (`@Version`)** for general catalogue updates, or **Pessimistic Locking (`SELECT FOR UPDATE`)** for critical low-inventory allocation bottlenecks.
+
+---
+
+### 4. THE INTERVIEW CHEAT SHEET
+
+##### Q1: How does Hibernate’s Dirty Checking mechanism work, and what is its performance impact?
+> **Answer:** When an entity is loaded into the Persistence Context (First-Level Cache), Hibernate stores an internal array copy representing the entity’s initial state (**Snapshot**). When the transaction flushes (usually before commit or query execution), Hibernate compares every property of the current entity against the snapshot. If any property has changed, Hibernate automatically constructs and schedules an optimized SQL `UPDATE` statement. 
+> * **Performance Impact:** Loading large entity graphs with thousands of objects incurs significant CPU and memory overhead during dirty checking. This can be completely eliminated for read-only operations using **DTO Projections** or `readOnly = true` on `@Transactional`.
+
+##### Q2: What is the exact difference between `JOIN FETCH` and `@EntityGraph`?
+> **Answer:** Both solve the $N+1$ query problem by eagerly fetching associations in a single SQL query. 
+> * **`JOIN FETCH`** is explicitly written inside JPQL queries (`SELECT o FROM Order o JOIN FETCH o.items`), creating a hardcoded query plan and performing an `INNER JOIN` (or `LEFT JOIN` if specified).
+> * **`@EntityGraph`** is an annotation-driven, dynamic approach based on JPA 2.1 specs. It can be applied on repository query methods to override fetch plans dynamically without rewriting JPQL, typically generating SQL `LEFT OUTER JOIN`s.
+
+##### Q3: Why is `spring.jpa.open-in-view=true` considered an anti-pattern in high-throughput enterprise systems?
+> **Answer:** Open Session in View (OSIV) binds the JPA `EntityManager` to the entire lifecycle of an HTTP request. This holds an active JDBC connection from the connection pool during view rendering and JSON serialization in the web layer. If network latency is high or serialization is slow, the connection pool is starved of connections while doing no actual database work, causing systemic cascading timeouts across all microservices.
+
+##### Q4: When should you use Optimistic Locking vs. Pessimistic Locking in a banking or supply chain system?
+> **Answer:** 
+> * **Optimistic Locking (`@Version`):** Best for **low-to-medium contention** scenarios. It does not hold database locks, maximizing concurrency and throughput. If a conflict occurs, an `OptimisticLockException` is thrown, which the application can catch and retry.
+> * **Pessimistic Locking (`PESSIMISTIC_WRITE` / `SELECT FOR UPDATE`):** Mandatory for **high-contention, high-value operations** (e.g., live bank account balance debits or reserving the last available items in inventory). It places an exclusive row-level lock in the database, preventing concurrent modifications and dirty reads at the cost of concurrency.
+
+##### Q5: How do you choose the optimal `maximum-pool-size` for HikariCP?
+> **Answer:** Setting a pool size too large causes disk thrashing, memory bloat, and CPU context-switching overhead. The optimal pool size is calculated using the formula:
+> $$\text{Connections} = (\text{Core Count} \times 2) + \text{Effective Spindle Count}$$
+> For most enterprise microservices running on modern multi-core servers with SSDs, a pool size between **10 and 30 connections** provides optimal throughput and minimal query wait times.
+</file>
+
+<file path="chapter-6.md">
+# CHAPTER 6: The Guard Dogs & Keycards
+### *Spring Security 6, OAuth2, JWT & Zero-Trust Banking Defense*
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                 OAUTH2 & JWT HIGH-SECURITY BORDER CONTROL                   │
+│                                                                             │
+│  [ Traveler (Angular App) ]                                                 │
+│        │                                                                    │
+│        │ 1. Present Credentials (User/Pass + MFA)                           │
+│        ▼                                                                    │
+│  [ Identity Provider / Central Customs (Keycloak / Azure Entra ID) ]        │
+│        │                                                                    │
+│        │ 2. Issue Cryptographically Signed Biometric Passport (JWT)         │
+│        ▼                                                                    │
+│  [ Traveler holds JWT ] ── Bearer Token ──► [ Spring Security Filter Chain ]│
+│                                                       │                     │
+│               ┌───────────────────────────────────────┴───────────────┐     │
+│               ▼                                                       ▼     │
+│      [ Verify Signature ]                                    [ Parse Roles ]│
+│      (Validates against IdP JWKS Public Key)                 (Extract Scopes│
+│               │                                               & Authorities)│
+│               └───────────────────────┬───────────────────────────────┘     │
+│                                       ▼                                     │
+│                        [ SecurityContextHolder ]                            │
+│                                       │                                     │
+│                                       ▼                                     │
+│                   [ @PreAuthorize: Armed Guard at Door ]                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 1. THE MENTAL MODEL
+
+If the database is the subterranean gold vault, you cannot rely on an honor system to protect it. You do not place a sign on the door saying: *"Please only take what belongs to you."*
+
+In an insecure architecture, systems rely on **Perimeter Defense** (the airport fence). Once a person walks past the front gate, every door inside the building is unlocked. If a baggage handler sneaks into the baggage terminal, they can walk unimpeded into the Air Traffic Control Tower and fly an Airbus A380.
+
+**Modern Banking Architecture demands Zero-Trust Defense.**
+Every single room, elevator, corridor, and safety deposit box verifies your credentials independently, on every single request.
+
+* **Authentication vs. Authorization (Who You Are vs. Where You Can Go):**
+  * **Authentication ($401\text{ Unauthorized}$):** Presenting your biometric passport at border control. The border guard verifies your identity: *"You are indeed Alexandre Dupont."*
+  * **Authorization ($403\text{ Forbidden}$):** Walking up to the Runway 09R Service Gate. The guard checks your badge: *"We know you are Alexandre Dupont, but you do not hold a Tier-3 Airfield Security Clearance. Access Denied."*
+* **The Identity Provider (The Central Passport Bureau / Keycloak / Azure Entra ID):** The sovereign authority that stamps and signs passports. It issues tamper-proof cryptographic tokens (**JWTs**).
+* **The JSON Web Token (The Biometric Digital Passport):**
+  * **Header:** The type of passport and encryption algorithm used (e.g., `RS256`).
+  * **Payload (Claims):** The traveler's identity (`sub`), clearance level (`roles: ["ROLE_VAULT_OPERATOR"]`), and passport expiration date (`exp`).
+  * **Signature:** A cryptographic seal stamped by the Identity Provider’s private key. The airport guards only need the Identity Provider’s **Public Key (JWKS)** to verify the seal’s authenticity in microseconds without calling the Passport Bureau over the phone for every passenger.
+* **The Spring Security Filter Chain (The Checkpoint Corridors):** A series of armed guards standing in a single-file corridor. 
+  * Guard 1 disables outdated protocols (CSRF disabled for stateless REST).
+  * Guard 2 verifies CORS flight origins.
+  * Guard 3 validates the JWT cryptographic signature.
+  * Guard 4 extracts claims and converts them into security clearances (`GrantedAuthority`).
+  * Only when all guards nod does the request reach your `@RestController`.
+
+---
+
+### 2. THE MECHANICS
+
+#### 2.1 Spring Security 6 Component Architecture (Spring Boot 3+)
+
+Spring Security 6 eliminates deprecated configuration adapters (`WebSecurityConfigurerAdapter`) in favor of a **Component-Based Security Filter Chain DSL**.
+
+```java
+package com.astek.banking.security.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.convert.converter.Converter;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.authentication.AbstractAuthenticationToken;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity(prePostEnabled = true) // Activates @PreAuthorize / @PostAuthorize
+public class EnterpriseSecurityConfiguration {
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http
+            // 1. STATELESS ARCHITECTURE: No HTTP Session cookies created or used
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            
+            // 2. CSRF: Disabled strictly because we are stateless REST using Bearer tokens
+            .csrf(csrf -> csrf.disable())
+            
+            // 3. CORS: Enforce strict origin filtering
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            
+            // 4. URL AUTHORIZATION RULES
+            .authorizeHttpRequests(auth -> auth
+                // Public Swagger/OpenAPI endpoints
+                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                // Public Health Check for Kubernetes Liveness probes
+                .requestMatchers(HttpMethod.GET, "/actuator/health/**").permitAll()
+                // Strict Role-based endpoint boundaries
+                .requestMatchers("/api/v1/vault/admin/**").hasRole("VAULT_ADMIN")
+                .requestMatchers("/api/v1/logistics/**").hasAnyRole("SUPPLY_MANAGER", "VAULT_ADMIN")
+                // All other business endpoints require authenticated identity
+                .anyRequest().authenticated()
+            )
+            
+            // 5. OAUTH2 RESOURCE SERVER (JWT Validation)
+            .oauth2ResourceServer(oauth2 -> oauth2
+                .jwt(jwt -> jwt.jwtAuthenticationConverter(customJwtAuthenticationConverter()))
+            );
+
+        return http.build();
+    }
+
+    /**
+     * Converts Keycloak / Azure AD claims into Spring Security GrantedAuthorities.
+     * Keycloak nests roles inside: resource_access -> {client_id} -> roles: ["VAULT_ADMIN"]
+     */
+    @Bean
+    public Converter<Jwt, ? extends AbstractAuthenticationToken> customJwtAuthenticationConverter() {
+        JwtAuthenticationConverter jwtConverter = new JwtAuthenticationConverter();
+        
+        jwtConverter.setJwtGrantedAuthoritiesConverter(jwt -> {
+            // Standard OAuth2 Scopes (e.g., "SCOPE_read", "SCOPE_write")
+            JwtGrantedAuthoritiesConverter defaultScopesConverter = new JwtGrantedAuthoritiesConverter();
+            Collection<GrantedAuthority> defaultAuthorities = defaultScopesConverter.convert(jwt);
+
+            // Extract custom realm/client roles from Keycloak JWT payload
+            Collection<GrantedAuthority> customRoles = extractKeycloakRoles(jwt);
+
+            return Stream.concat(
+                    defaultAuthorities != null ? defaultAuthorities.stream() : Stream.empty(),
+                    customRoles.stream()
+            ).collect(Collectors.toSet());
+        });
+
+        return jwtConverter;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Collection<GrantedAuthority> extractKeycloakRoles(Jwt jwt) {
+        Map<String, Object> realmAccess = jwt.getClaim("realm_access");
+        if (realmAccess == null || !realmAccess.containsKey("roles")) {
+            return Collections.emptyList();
+        }
+
+        List<String> roles = (List<String>) realmAccess.get("roles");
+        return roles.stream()
+                .map(roleName -> new SimpleGrantedAuthority("ROLE_" + roleName))
+                .collect(Collectors.toList());
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOrigins(List.of("https://portal.bank.astek.com", "https://logistics.astek.com"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key"));
+        config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
+    }
+}
+```
+
+---
+
+#### 2.2 Method-Level Security & Domain-Level Access Control (BOLA Defense)
+
+URL matching alone cannot verify whether an authenticated user is allowed to touch a specific bank account record. **We combine `@PreAuthorize` with custom Spring Expression Language (SpEL) security evaluators.**
+
+```java
+package com.astek.banking.vault.service;
+
+import com.astek.banking.vault.dto.TransferRequest;
+import com.astek.banking.vault.dto.TransferReceipt;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.stereotype.Service;
+
+@Service
+public class SecureTransferService {
+
+    /**
+     * DOMAIN-LEVEL SECURITY:
+     * 1. Requires ROLE_TELLER or ROLE_CUSTOMER
+     * 2. Calls AccountSecurityEvaluator bean to verify the authenticated user OWNS the source IBAN
+     * 3. Enforces transfer amount business threshold limits
+     */
+    @PreAuthorize("""
+        hasRole('VAULT_ADMIN') or 
+        (hasRole('CUSTOMER') and 
+         @accountSecurityEvaluator.isAccountOwner(authentication, #request.sourceIban()) and
+         #request.amount() <= 50000.00)
+    """)
+    public TransferReceipt executeSecureTransfer(TransferRequest request) {
+        // Business logic runs ONLY after all security gates pass
+        return new TransferReceipt("TX-998822", request.amount(), "SETTLED");
+    }
+}
+```
+
+##### The Security Evaluator Component:
+```java
+package com.astek.banking.security;
+
+import com.astek.banking.vault.repository.BankAccountRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.stereotype.Component;
+
+@Component("accountSecurityEvaluator")
+@RequiredArgsConstructor
+public class AccountSecurityEvaluator {
+
+    private final BankAccountRepository bankAccountRepository;
+
+    public boolean isAccountOwner(Authentication authentication, String iban) {
+        if (!(authentication.getPrincipal() instanceof Jwt jwt)) {
+            return false;
+        }
+
+        // Extract authenticated User Subject UUID from JWT claims
+        String authenticatedUserId = jwt.getSubject();
+
+        // Verify in database that this specific IBAN belongs to this user ID
+        return bankAccountRepository.findByIban(iban)
+                .map(account -> account.getOwnerUserId().equals(authenticatedUserId))
+                .orElse(false);
+    }
+}
+```
+
+---
+
+#### 2.3 Mutual TLS (mTLS): Zero-Trust Machine-to-Machine Encryption
+
+Inside a banking cluster, **traffic between microservices cannot travel over unencrypted plain HTTP.**
+
+```
+[ Service A (Payment Microservice) ] ◄════════════════════════════► [ Service B (Ledger Microservice) ]
+  1. Presents its TLS Certificate                                     1. Presents its TLS Certificate
+  2. Verifies Service B Certificate                                   2. Verifies Service A Certificate
+  3. Establishes Encrypted Channel                                    3. Establishes Encrypted Channel
+```
+
+* **Standard TLS (One-Way):** The client verifies the server’s certificate (e.g., browser connecting to `https://google.com`).
+* **mTLS (Mutual TLS Two-Way):** Both the client and the server present and cryptographically verify each other's certificates against a shared **Enterprise Certificate Authority (CA)** before a single byte of application data is transmitted.
+
+---
+
+### 3. THE ENTERPRISE PITFALLS
+
+#### 💣 War Story: The Broken Object Level Authorization (BOLA / IDOR) Wire Fraud
+* **Context:** An online commercial banking portal.
+* **The Incident:** An attacker logged into Account A (`sub: "user-111"`), opened developer tools, and sent a `POST /api/v1/transfers` with a payload specifying source account `FR76-USER-222` (belonging to another corporation).
+* **The Vulnerability:** The developer had written:
+  ```java
+  // ❌ DISASTER: Only checked IF the user was authenticated, not WHAT they owned!
+  @PostMapping("/transfers")
+  @PreAuthorize("isAuthenticated()")
+  public ResponseEntity<Void> transfer(@RequestBody TransferRequest request) {
+      bankService.transfer(request.getSourceIban(), request.getTargetIban(), request.getAmount());
+      return ResponseEntity.ok().build();
+  }
+  ```
+* **The Consequence:** The bank processed an unauthorized wire transfer of €4,200,000.
+* **The Rule:** **Authentication $\neq$ Authorization. Never rely on client-submitted identifiers without asserting entity ownership against the authenticated JWT principal.**
+
+---
+
+#### 💣 War Story: The "Alg: None" Cryptographic Bypass
+* **Context:** An international supply chain customs clearance system.
+* **The Incident:** An attacker intercepted a JWT, decoded the Base64 header, changed `"alg": "RS256"` to `"alg": "none"`, modified the payload role to `"ROLE_CUSTOMS_DIRECTOR"`, removed the signature completely, and forwarded the token.
+* **The Disaster:** A legacy, misconfigured JWT parsing library accepted unsigned tokens when `"alg": "none"` was present, granting the attacker root administrative access to import unsanctioned industrial containers.
+* **The Fix:** Modern Spring Security Resource Server strictly rejects tokens that do not match the explicitly configured cryptographic algorithm (e.g., `JWSAlgorithm.RS256`) and forces signature verification against a trusted **JWKS URI (`spring.security.oauth2.resourceserver.jwt.jwk-set-uri`)**.
+
+---
+
+### 4. THE INTERVIEW CHEAT SHEET
+
+##### Q1: How has Spring Security 6 fundamentally changed its configuration model compared to older versions?
+> **Answer:** Spring Security 6 completely removes legacy adapters like `WebSecurityConfigurerAdapter` and method overrides. Configuration is now entirely **component-based using `@Bean` definitions** returning a `SecurityFilterChain`. 
+> Furthermore, it replaces method chaining with **Lambda DSLs** (`http.authorizeHttpRequests(auth -> auth...)`), improving readability, preventing configuration leaking, and enforcing immutability.
+
+##### Q2: What is the fundamental difference between OAuth2 Scopes and Spring Security Roles?
+> **Answer:** 
+> * **OAuth2 Scopes (Delegated Permissions):** Define what the *client application* is allowed to do on behalf of the user (e.g., `SCOPE_read:account`, `SCOPE_payment:create`). They represent technical consent granted to an application.
+> * **Spring Security Roles / Authorities (User Clearances):** Define what the *actual end-user* is authorized to perform within the business domain (e.g., `ROLE_VAULT_ADMIN`, `ROLE_TELLER`). 
+> In enterprise systems, Spring converts Scopes to `SCOPE_` authorities and Realm Roles to `ROLE_` authorities for granular access evaluations.
+
+##### Q3: Why is CSRF protection disabled in stateless REST microservices, and when must it remain enabled?
+> **Answer:** 
+> * **CSRF (Cross-Site Request Forgery)** attacks rely on the browser automatically attaching ambient credentials (such as Session Cookies or HTTP Basic Auth headers) to malicious third-party cross-origin requests.
+> * In **Stateless REST APIs using Bearer JWTs in the `Authorization` header**, browsers do *not* automatically attach the token on cross-origin requests; the frontend JavaScript code must explicitly supply it. Therefore, CSRF protection is redundant and can be safely disabled (`csrf.disable()`).
+> * CSRF **must remain enabled** if the application uses cookies (such as `JSESSIONID` or `HttpOnly` refresh tokens) to maintain authentication state.
+
+##### Q4: What is Broken Object Level Authorization (BOLA / IDOR) and how is it mitigated in Spring Boot?
+> **Answer:** BOLA (formerly Insecure Direct Object References) occurs when an endpoint accepts a resource ID (e.g., `/accounts/{iban}`) and validates that the caller is logged in, but fails to verify that the logged-in user is the legitimate owner of that specific resource. 
+> * **Mitigation:** Use method security with `@PreAuthorize` combined with a SpEL evaluator (e.g., `@PreAuthorize("@securityEvaluator.isOwner(authentication, #id)")`), or enforce tenancy/ownership constraints directly inside SQL queries (`WHERE id = :id AND owner_id = :authenticatedUserId`).
+
+##### Q5: How does a Spring Boot OAuth2 Resource Server validate incoming JWT tokens without calling the Authorization Server on every request?
+> **Answer:** The Resource Server uses **Asymmetric Cryptography**. 
+> 1. At startup, Spring fetches the Authorization Server’s public keys via the **JWKS (JSON Web Key Set) endpoint**.
+> 2. When a JWT arrives in the `Authorization: Bearer <token>` header, Spring parses the token's header to identify the key ID (`kid`).
+> 3. It uses the corresponding cached public key to verify the cryptographic signature locally in memory ($O(1)$ CPU operation).
+> 4. It validates standard claims locally: expiration time (`exp`), not before (`nbf`), issuer (`iss`), and audience (`aud`). Zero network calls to the Authorization Server are needed during normal request execution.
+</file>
+
+<file path="curiculum.md">
+To prepare fully and completely for this confirmed Full Stack (Java/Angular/Azure) role in a high-stakes Banking & Supply Chain environment, your book needs to turn abstract, complex technical concepts into intuitive, unforgettable mental models.
+
+Here is the complete **architectural blueprint and outline for your book**, built around a unified master metaphor: **"The Automated International Mega-Airport & Central Vault."**
+
+---
+
+# 📖 Book Title Idea: 
+### *The Full-Stack Control Tower: Architecting High-Stakes Java & Angular Systems*
+
+---
+
+## 🏛️ The Master Analogy: The Mega-Airport & Central Bank
+* **The Frontend (Angular/TypeScript):** The Passenger Terminals, Flight Dashboards, and Pilot Cockpits (fast, responsive, intuitive, displaying live data).
+* **The Backend (Java & Spring Boot):** The Automated Underground Baggage Routing, High-Speed Trains, and Vault Security Systems (heavy lifting, thread-safe, high throughput).
+* **APIs / Microservices:** The Standardized Cargo Containers and Customs Transit Protocols.
+* **DevOps & Cloud (Azure, Docker, K8s):** The Prefab Transport Pods, Harbor Cranes, and Grid Power Stations.
+* **Security & Testing (SonarQube, JUnit):** The Metal Detectors, Customs Border Control, and Pre-flight Stress Testing.
+* **Supply Chain & Banking Business Domain:** The Live Baggage Tracking, Warehousing, and Wire-Transfer Vaults.
+
+---
+
+## 📚 Book Structure: 7 Modules / 24 Chapters
+
+---
+
+### PART I — The Urban Blueprint (System Architecture & Foundations)
+
+#### Chapter 1: The Monolith vs. The Airport City (Microservices Architecture)
+* **The Analogy:** A giant monolithic airport where a power outage in the duty-free shop grounds all airplanes vs. a decentralized airport city where terminal trains, baggage routing, and fuel depots run independently.
+* **Core Concepts:** Microservices vs Monoliths, Domain-Driven Design (DDD) bounded contexts, Service discovery, Circuit breakers (Resilience4j).
+* **The Banking/Logistics Context:** Separating the *Payment Gateway* from the *Warehouse Inventory Service*.
+
+#### Chapter 2: The Contract at the Counter (REST APIs & Swagger/OpenAPI)
+* **The Analogy:** The standardized customs declaration form. No matter what language the passenger speaks, the form has the exact same fields in the exact same format.
+* **Core Concepts:** REST maturity models (Richardson), idempotent methods (GET, PUT, DELETE vs POST), OpenAPI/Swagger specs, HTTP status codes, API versioning strategies.
+
+---
+
+### PART II — The Underground Heavy Engines (Back-End: Java & Spring Boot)
+
+#### Chapter 3: The Engine Block (Modern Java Mechanics)
+* **The Analogy:** The mechanical engine pistons and fuel injection.
+* **Core Concepts:** Java 17/21 features (Records, Pattern Matching, Sealed Classes), Memory Model (Heap, Stack, Garbage Collection tuning), Concurrency & Virtual Threads (Project Loom: replacing 1,000 heavy trucks with 100,000 lightweight automated drones).
+
+#### Chapter 4: The Spring Boot Power Grid (IoC, DI & Bean Lifecycle)
+* **The Analogy:** The airport’s automated modular power grid. Instead of each machine generating its own electricity and finding its own fuel, a central dispatcher injects power and dependencies precisely where needed.
+* **Core Concepts:** Inversion of Control (IoC), Dependency Injection, Spring Bean Scopes & Lifecycle, Spring Boot 3 autoconfiguration and `@ConfigurationProperties`.
+
+#### Chapter 5: The Master Vault & Ledger (Spring Data & Database Performance)
+* **The Analogy:** The underground robotic vault. If you send a human worker to fetch gold coins one by one (the $N+1$ query problem), the line stalls. If you send an automated forklift (Batch Fetching & Projections), operations run instantly.
+* **Core Concepts:** Spring Data JPA / Hibernate, Connection pooling (HikariCP), Query optimization, Indexing strategies, Caching with Redis, Handling distributed transactions (Saga Pattern vs 2PC).
+
+#### Chapter 6: The Guard Dogs & Keycards (Spring Security & Identity)
+* **The Analogy:** Biometric passport scanners, VIP badges, and multi-checkpoint security corridors.
+* **Core Concepts:** Authentication vs. Authorization, Spring Security filter chains, JWT (JSON Web Tokens), OAuth2 / OpenID Connect, Role-Based Access Control (RBAC), CSRF, CORS, preventing SQL Injection and XSS.
+
+---
+
+### PART III — The Control Cockpit & Passenger Kiosks (Front-End: Angular & React)
+
+#### Chapter 7: The Aircraft Instrument Panel (Angular 14+ Core Architecture)
+* **The Analogy:** The airplane cockpit. Gauges (Components) display readings, wire harnesses (Services) deliver sensor data, and control units (Modules / Standalone Components) organize flight systems.
+* **Core Concepts:** Standalone Components, Component Lifecycle hooks, Directives, Pipes, Dependency Injection in Angular, TypeScript strict typing and interfaces.
+
+#### Chapter 8: The Fluid Conveyor Belts (Reactive Programming with RxJS)
+* **The Analogy:** Baggage conveyor belts. Suitcases (events/data) flow continuously. You can filter out overweight bags (`filter`), repack them into smaller boxes (`map`), wait for two belts to merge (`combineLatest`), or drop older items when a priority crate arrives (`switchMap`).
+* **Core Concepts:** Observables vs Promises, Subject types (BehaviorSubject), Marble diagrams, Unsubscribing & Memory Leak prevention (e.g., `takeUntilDestroyed`, `async` pipe), Angular Signals vs RxJS.
+
+#### Chapter 9: The Airport Radar Display (State Management & Dynamic UI)
+* **The Analogy:** The Air Traffic Control radar. Every controller in the tower must see the exact same plane coordinates at the exact same millisecond without screaming across the room.
+* **Core Concepts:** State Management patterns (NgRx, Akita, or Signal Stores), Smart vs. Dumb (Presentational) components, Change Detection strategy (`OnPush`), Angular Form builders (Reactive Forms & custom validators).
+
+#### Chapter 10: The Alternative Cockpit (React for the Angular Engineer)
+* **The Analogy:** Flying an Airbus (Angular: highly opinionated, built-in flight computers) vs. a Boeing (React: minimalist cockpit, you pick your own third-party navigation gear).
+* **Core Concepts:** React Hooks (`useState`, `useEffect`, `useMemo`), Virtual DOM vs Angular’s Incremental DOM, State management in React (Redux Toolkit/Zustand), when and how to switch mindsets between Angular and React.
+
+---
+
+### PART IV — Quality, Customs & Defense (Testing, Quality & Reliability)
+
+#### Chapter 11: Pre-Flight Crash Simulations (Testing Strategies)
+* **The Analogy:** Testing individual engine bolts in a lab (Unit Testing), testing the engine connected to the fuel line (Integration Testing), and running a complete flight rehearsal with fake passengers (End-to-End Testing).
+* **Core Concepts:** JUnit 5, Mockito, Testcontainers (spinning up real Postgres/Kafka in Docker for tests), Jasmine/Karma/Jest for Angular, Cypress/Playwright for E2E.
+
+#### Chapter 12: The Building Inspector (SonarQube & Clean Code)
+* **The Analogy:** The aviation safety inspector who flags structural rust, unauthorized wiring shortcuts, and missing emergency exits before an airplane is allowed to take off.
+* **Core Concepts:** SonarQube quality gates, Cyclomatic complexity, Code smells, Technical debt ratio, Static code analysis, Peer Code Review etiquette.
+
+---
+
+### PART V — Skyways & Shipping Fleet (DevOps, Cloud & Infrastructure)
+
+#### Chapter 13: Standard ISO Shipping Containers (Dockerization)
+* **The Analogy:** Standardized shipping containers that can be loaded onto any ship, train, or truck without caring what is inside them.
+* **Core Concepts:** Multi-stage Docker builds for Java and Angular, Layer caching, Minimizing image footprint (Alpine, Distroless), Container security scanning.
+
+#### Chapter 14: The Harbor Master & Crane Fleet (Kubernetes)
+* **The Analogy:** The port master who automatically dispatches 10 more cranes when 50 cargo ships arrive simultaneously, and replaces a broken crane instantly without stopping the port.
+* **Core Concepts:** Pods, Deployments, Services, Ingress, Horizontal Pod Autoscaling (HPA), Health probes (Liveness & Readiness).
+
+#### Chapter 15: The Automated Assembly Line (CI/CD with GitLab & Azure DevOps)
+* **The Analogy:** The car manufacturing conveyor line: Raw steel enters $\rightarrow$ Robot welds $\rightarrow$ Safety tests run $\rightarrow$ Paint applied $\rightarrow$ Car driven directly to the showroom floor.
+* **Core Concepts:** CI/CD pipelines, YAML pipeline definitions, Automated testing stages, Artifact repositories, Blue-Green & Canary deployments.
+
+#### Chapter 16: The Cloud Megacity (Microsoft Azure Services)
+* **The Analogy:** Renting power, storage, and land from a state-of-the-art utility company instead of building your own private power plant.
+* **Core Concepts:** Azure App Services, Azure Kubernetes Service (AKS), Azure Key Vault (managing banking secrets), Azure Blob Storage, Application Insights (monitoring & telemetry).
+
+---
+
+### PART VI — The Mission: Banking & Logistics in the Real World
+
+#### Chapter 17: Banking Criticality (Zero-Loss Financial Transactions)
+* **The Analogy:** The high-security armored truck. If money leaves Point A, it MUST arrive at Point B. If the truck breaks down midway, the money must magically return to Point A without a single penny lost.
+* **Core Concepts:** ACID properties, Idempotency keys in payment APIs, Audit trails & event sourcing, Distributed locking, Encryption at rest & in transit (mTLS).
+
+#### Chapter 18: Supply Chain & Warehousing (Real-Time Physical Assets)
+* **The Analogy:** The automated sorting hub on Black Friday. Millions of packages scanned per minute; inventory must reflect stock changes within milliseconds across all regional distribution centers.
+* **Core Concepts:** Event-driven architecture (Kafka/RabbitMQ basics), Optimistic vs Pessimistic locking in inventory management, WebSockets/Server-Sent Events for live UI tracking.
+
+---
+
+### PART VII — The Flight Crew & The Interview Gauntlet
+
+#### Chapter 19: Ground Crew Coordination (Agile, Jira, PO, QA & Architect)
+* **The Analogy:** The pit-stop crew at a Formula 1 race. The driver (PO) defines the race goal, the mechanics (Devs) change the tires, the safety checker (QA) clears the release, and the crew chief (DevOps/Architect) optimizes the pit lane.
+* **Core Concepts:** Scrum ceremonies, Writing acceptance criteria, Structuring Confluence documentation, Effective cross-functional collaboration.
+
+#### Chapter 20: The 3-Gate Interview Preparation (Landing the Job)
+* **Gate 1: Talent Acquisition (Charline):** Translating technical career experience into impact, agility, culture fit, and motivation.
+* **Gate 2: Technical Manager:** Live coding, architecture whiteboard challenges, explaining Spring/Angular internals, handling edge cases.
+* **Gate 3: Pôle Director (Nicolas):** High-level strategic vision, client satisfaction, consulting mindset, adaptability to complex enterprise environments.
+
+---
+
+## 🛠️ How to Write Each Chapter: The 4-Step Template
+
+To make the writing process smooth and consistent, use this structural formula for every single chapter:
+
+```markdown
+### Chapter X: [Topic Title]
+
+1. THE MENTAL MODEL (The Analogy)
+   - A 1-2 page visual story using the Airport/Logistics/Bank metaphor to explain the "Why".
+
+2. THE MECHANICS (Technical Deep Dive)
+   - Deep explanation of the code, frameworks, and architecture.
+   - Code snippets comparing Java/Spring Boot (Backend) and Angular/TypeScript (Frontend).
+
+3. THE ENTERPRISE PITFALLS (Real-World War Stories)
+   - What happens when this fails in a Bank or Supply Chain? (e.g., Memory leak, Race condition, Security breach).
+   - How to debug and fix it.
+
+4. THE INTERVIEW CHEAT SHEET
+   - 5 questions a Senior Technical Interviewer will ask about this topic.
+   - The exact concise, high-impact answers demonstrating 4+ years of seniority.
+```
+
+---
+
+## 🚀 Next Step: Fast-Track Writing Plan
+
+Pick **Chapter 4 (Spring Boot Power Grid)** or **Chapter 8 (RxJS Conveyor Belts)** first. Writing one backend and one frontend chapter will establish the tone, analogies, and code patterns for the entire book.
+</file>
+
+</files>
